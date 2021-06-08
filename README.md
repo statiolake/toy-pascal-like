@@ -14,11 +14,14 @@ Currently the syntax follows the following BNF:
 <dump-stmt> ::= dump <var>
 <bool-expr> ::= <arith-expr><compare-op><arith-expr>
 <compare-op> ::= < | > | <= | >= | == | !=
-<arith-expr> ::= <var> | <const> | (<arith-expr><arith-op><arith-expr>)
+<arith-expr> ::= <var> | <const> | <fncall> | (<arith-expr><arith-op><arith-expr>)
+<fncall> ::= <ident>(<argument-list>)
+<argument-list> ::= ϵ | <arith-expr> | <arith-expr>, <argument-list>
 <arith-op> ::= + | - | * | /
 <const> ::= <digit> | <digit><const>
 <digit> ::= 0 | 1 | 2 | ... | 9
-<var> ::= <letter> | <var><letter> | <var><digit>
+<var> ::= <ident>
+<ident> ::= <letter> | <var><letter> | <var><digit>
 <letter> ::= a | b | ... | z
 ```
 

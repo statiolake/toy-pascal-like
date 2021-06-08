@@ -66,10 +66,26 @@ pub enum AstCompareOp {
 pub enum AstArithExpr {
     Var(Box<AstVar>),
     Const(Box<AstConst>),
+    FnCall(Box<AstFnCall>),
     Op {
         lhs: Box<AstArithExpr>,
         op: Box<AstArithOp>,
         rhs: Box<AstArithExpr>,
+    },
+}
+
+#[derive(Debug)]
+pub struct AstFnCall {
+    pub ident: Box<AstIdent>,
+    pub args: Box<AstArgumentList>,
+}
+
+#[derive(Debug)]
+pub enum AstArgumentList {
+    Empty,
+    Nonempty {
+        expr: Box<AstArithExpr>,
+        next: Box<AstArgumentList>,
     },
 }
 
@@ -92,9 +108,18 @@ impl AstConst {
 }
 
 #[derive(Debug)]
-pub struct AstVar(pub String);
+pub struct AstVar(pub AstIdent);
 
 impl AstVar {
+    pub fn ident(&self) -> &str {
+        self.0.ident()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstIdent(pub String);
+
+impl AstIdent {
     pub fn ident(&self) -> &str {
         &self.0
     }
@@ -224,6 +249,7 @@ impl fmt::Display for AstArithExpr {
         match self {
             AstArithExpr::Var(var) => writeln!(b, "  {}", var)?,
             AstArithExpr::Const(value) => writeln!(b, "  {}", value)?,
+            AstArithExpr::FnCall(fncall) => writeln!(b, "{}", indent(&fncall, 4))?,
             AstArithExpr::Op { lhs, op, rhs } => {
                 writeln!(b, "  lhs:")?;
                 writeln!(b, "{}", indent(&lhs, 4))?;
@@ -231,6 +257,27 @@ impl fmt::Display for AstArithExpr {
                 writeln!(b, "  rhs:")?;
                 writeln!(b, "{}", indent(&rhs, 4))?;
             }
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for AstFnCall {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(b, "  ident: {}", self.ident)?;
+        writeln!(b, "  args:")?;
+        writeln!(b, "{}", indent(&self.args, 4))?;
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for AstArgumentList {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        if let AstArgumentList::Nonempty { expr, next } = self {
+            writeln!(b, "{}", expr)?;
+            writeln!(b, "{}", next)?;
         }
 
         Ok(())
@@ -257,6 +304,12 @@ impl fmt::Display for AstConst {
 
 impl fmt::Display for AstVar {
     fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        write!(b, "Var({})", self.ident())
+        write!(b, "Var({})", self.0)
+    }
+}
+
+impl fmt::Display for AstIdent {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        write!(b, "Ident({})", self.ident())
     }
 }

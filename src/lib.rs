@@ -19,7 +19,20 @@ mod tests {
 
     #[test]
     fn fib() {
-        let source = include_str!("../fib.pas");
+        let source = r#"
+begin
+    a_0 := 0;
+    a_1 := 1;
+    i := 0;
+    while i < 000020 do begin
+        dump a_0;
+        tmp := (a_0 + a_1);
+        a_0 := a_1;
+        a_1 := tmp;
+        i := (i + 1)
+    end
+end
+"#;
         let state = run_source(source);
         assert_eq! {
             state.variables(),
@@ -30,5 +43,19 @@ mod tests {
                 "tmp".to_string() => 10946,
             }
         };
+    }
+
+    #[test]
+    fn func_random_int() {
+        let source = r#"
+begin
+    min := 10;
+    max := 20;
+    dice := RandomInt(min, max);
+    dump dice
+end
+"#;
+        let state = run_source(source);
+        assert!((10..=20).contains(&state.variables()["dice"]));
     }
 }

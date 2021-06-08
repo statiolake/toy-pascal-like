@@ -16,16 +16,16 @@ impl<'a> Parser<'a> {
         self.ptr == self.input.len()
     }
 
-    pub fn peek(&self) -> Option<Token<'a>> {
-        if !self.is_finished() {
-            Some(self.input[self.ptr])
+    pub fn peek(&self, n: usize) -> Option<Token<'a>> {
+        if self.ptr + n < self.input.len() {
+            Some(self.input[self.ptr + n])
         } else {
             None
         }
     }
 
     pub fn next(&mut self) -> Option<Token> {
-        let res = self.peek();
+        let res = self.peek(0);
         if !self.is_finished() {
             self.ptr += 1;
         }
@@ -41,7 +41,7 @@ impl<'a> Parser<'a> {
 
 impl Parser<'_> {
     pub fn parse_stmt(&mut self) -> AstStmt {
-        match self.peek() {
+        match self.peek(0) {
             Some(Token::If) => AstStmt::IfStmt(Box::new(self.parse_if_stmt())),
             Some(Token::While) => AstStmt::WhileStmt(Box::new(self.parse_while_stmt())),
             Some(Token::Begin) => AstStmt::BeginStmt(Box::new(self.parse_begin_stmt())),
@@ -84,7 +84,7 @@ impl Parser<'_> {
 
     fn parse_stmt_list(&mut self) -> AstStmtList {
         let stmt = Box::new(self.parse_stmt());
-        let next = if self.peek() == Some(Token::Semicolon) {
+        let next = if self.peek(0) == Some(Token::Semicolon) {
             self.eat(Token::Semicolon);
             Some(Box::new(self.parse_stmt_list()))
         } else {
@@ -133,7 +133,7 @@ impl Parser<'_> {
     }
 
     fn parse_arith_expr(&mut self) -> AstArithExpr {
-        match self.peek() {
+        match self.peek(0) {
             Some(Token::OpenPar) => {
                 self.eat(Token::OpenPar);
                 let lhs = Box::new(self.parse_arith_expr());
@@ -147,11 +147,46 @@ impl Parser<'_> {
                 AstArithExpr::Const(value)
             }
             Some(Token::Ident(_)) => {
-                let var = Box::new(self.parse_var());
-                AstArithExpr::Var(var)
+                // peek next identifiers to determine whether it's fncall or variable, look one
+                // token ahead.
+                if self.peek(1) == Some(Token::OpenPar) {
+                    // fncall
+                    let fncall = Box::new(self.parse_fncall());
+                    AstArithExpr::FnCall(fncall)
+                } else {
+                    let var = Box::new(self.parse_var());
+                    AstArithExpr::Var(var)
+                }
             }
             Some(other) => panic!("unexpected token {:?} for arith-expr", other),
             None => panic!("unexpected EOF while reading arith-expr"),
+        }
+    }
+
+    fn parse_fncall(&mut self) -> AstFnCall {
+        let ident = Box::new(self.parse_ident());
+        self.eat(Token::OpenPar);
+        let args = Box::new(self.parse_argument_list());
+        self.eat(Token::ClosePar);
+
+        AstFnCall { ident, args }
+    }
+
+    fn parse_argument_list(&mut self) -> AstArgumentList {
+        match self.peek(0) {
+            Some(Token::ClosePar) => AstArgumentList::Empty,
+            Some(_) => {
+                let expr = Box::new(self.parse_arith_expr());
+                let next = if self.peek(0) == Some(Token::Comma) {
+                    self.eat(Token::Comma);
+                    Box::new(self.parse_argument_list())
+                } else {
+                    Box::new(AstArgumentList::Empty)
+                };
+
+                AstArgumentList::Nonempty { expr, next }
+            }
+            None => panic!("unexpected EOF while reading argument-list"),
         }
     }
 
@@ -178,12 +213,16 @@ impl Parser<'_> {
     }
 
     fn parse_var(&mut self) -> AstVar {
+        AstVar(self.parse_ident())
+    }
+
+    fn parse_ident(&mut self) -> AstIdent {
         let token = self.next().expect("unexpected EOF while reading var");
         let ident = match token {
             Token::Ident(ident) => ident,
             other => panic!("unexpected token {:?} for var", other),
         };
 
-        AstVar(ident.to_string())
+        AstIdent(ident.to_string())
     }
 }
