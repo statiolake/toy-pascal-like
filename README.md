@@ -39,3 +39,105 @@ For example, you can run `fib.pas` located at the root directly in this way:
 ```
 $ cargo run < fib.pas
 ```
+
+# Example
+
+The example output for `fib.pas`:
+
+```text
+--- tokens ---
+[Begin, Other("f"), AssgEqual, Other("0"), Semicolon, Other("s"), AssgEqual, Other("1"), Semicolon, Other("n"), AssgEqual, Other("0"), Semicolon, While, Other("n"), Lt, Other("9"), Do, Begin, Dump, Other("f"), Semicolon, Other("t"), AssgEqual, OpenPar, Other("f"), Add, Other("s"), ClosePar, Semicolon, Other("f"), AssgEqual, Other("s"), Semicolon, Other("s"), AssgEqual, Other("t"), Semicolon, Other("n"), AssgEqual, OpenPar, Other("n"), Add, Other("1"), ClosePar, End, End]
+
+--- ast ---
+Stmt
+    Begin
+        Stmt
+            Assg
+              var: Var(f)
+              expr:
+                ArithExpr
+                  Const(0)
+        Stmt
+            Assg
+              var: Var(s)
+              expr:
+                ArithExpr
+                  Const(1)
+        Stmt
+            Assg
+              var: Var(n)
+              expr:
+                ArithExpr
+                  Const(0)
+        Stmt
+            While
+              cond:
+                BoolExpr
+                  lhs:
+                    ArithExpr
+                      Var(n)
+                  op: CompareOp(<)
+                  rhs:
+                    ArithExpr
+                      Const(9)
+              body:
+                Stmt
+                    Begin
+                        Stmt
+                            Dump
+                              Var(f)
+                        Stmt
+                            Assg
+                              var: Var(t)
+                              expr:
+                                ArithExpr
+                                  lhs:
+                                    ArithExpr
+                                      Var(f)
+                                  op: ArithOp(+)
+                                  rhs:
+                                    ArithExpr
+                                      Var(s)
+                        Stmt
+                            Assg
+                              var: Var(f)
+                              expr:
+                                ArithExpr
+                                  Var(s)
+                        Stmt
+                            Assg
+                              var: Var(s)
+                              expr:
+                                ArithExpr
+                                  Var(t)
+                        Stmt
+                            Assg
+                              var: Var(n)
+                              expr:
+                                ArithExpr
+                                  lhs:
+                                    ArithExpr
+                                      Var(n)
+                                  op: ArithOp(+)
+                                  rhs:
+                                    ArithExpr
+                                      Const(1)
+
+
+--- run ---
+dump: f = 0
+dump: f = 1
+dump: f = 1
+dump: f = 2
+dump: f = 3
+dump: f = 5
+dump: f = 8
+dump: f = 13
+dump: f = 21
+
+--- variables ---
+f = 34
+n = 9
+s = 55
+t = 55
+```
