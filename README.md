@@ -26,20 +26,12 @@ Currently the syntax follows the following BNF:
 
 The interpreter is written in [Rust](https://www.rust-lang.org/ja), so you need to prepare build environment first. You can easily install it using the installer distributed at <https://rustup.rs/>.
 
-After installing, you can run the interpreter by running `cargo run` in a console. `cargo` automatically builds the interpreter before running the executable, so you don't have to build it manually.
-
-After compilation, the program waits for your keyboard input. Type entire source code and send EOF (press `Ctrl-Z` on Windows, or usually `Ctrl-D` on UNIX-like environments). The interpreter will execute your code. Note that REPL is **not** supported.
-
-For now, source code can only be loaded from stdin. If you have the source code as a text file, you can redirect it to the stdin:
-
-```
-$ cargo run < source.pas
-```
+After installing, you can run the interpreter by running `cargo run {source-file-path}` in a console. `cargo` automatically builds the interpreter before running the executable, so you don't have to build it manually.
 
 For example, you can run `fib.pas` located at the root directly in this way:
 
 ```
-$ cargo run < fib.pas
+$ cargo run fib.pas
 ```
 
 # Example
