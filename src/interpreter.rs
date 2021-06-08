@@ -14,7 +14,6 @@ pub struct State {
 
 impl State {
     pub fn display(&self) {
-        println!("--- VARIABLES ---");
         for (name, value) in &self.vars {
             println!("{} = {}", name, value);
         }

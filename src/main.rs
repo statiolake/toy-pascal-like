@@ -24,10 +24,13 @@ fn main() {
     let ast = Parser::new(&tokens).parse_stmt();
 
     println!("--- ast ---");
-    println!("{:#?}", ast);
+    println!("{}", ast);
     println!();
 
+    println!("--- run ---");
     let state = run(&ast);
+    println!();
 
+    println!("--- variables ---");
     state.display();
 }
