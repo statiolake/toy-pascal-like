@@ -18,7 +18,9 @@ fn main() {
     let tokens = tokenize(&source);
 
     println!("--- tokens ---");
-    println!("{:?}", tokens);
+    for token in &tokens {
+        println!("{:?}", token);
+    }
     println!();
 
     let ast = Parser::new(&tokens).parse_stmt();

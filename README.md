@@ -46,7 +46,53 @@ The example output for `fib.pas`:
 
 ```text
 --- tokens ---
-[Begin, Other("f"), AssgEqual, Other("0"), Semicolon, Other("s"), AssgEqual, Other("1"), Semicolon, Other("n"), AssgEqual, Other("0"), Semicolon, While, Other("n"), Lt, Other("9"), Do, Begin, Dump, Other("f"), Semicolon, Other("t"), AssgEqual, OpenPar, Other("f"), Add, Other("s"), ClosePar, Semicolon, Other("f"), AssgEqual, Other("s"), Semicolon, Other("s"), AssgEqual, Other("t"), Semicolon, Other("n"), AssgEqual, OpenPar, Other("n"), Add, Other("1"), ClosePar, End, End]
+Begin
+Other("f")
+AssgEqual
+Other("0")
+Semicolon
+Other("s")
+AssgEqual
+Other("1")
+Semicolon
+Other("n")
+AssgEqual
+Other("0")
+Semicolon
+While
+Other("n")
+Lt
+Other("9")
+Do
+Begin
+Dump
+Other("f")
+Semicolon
+Other("t")
+AssgEqual
+OpenPar
+Other("f")
+Add
+Other("s")
+ClosePar
+Semicolon
+Other("f")
+AssgEqual
+Other("s")
+Semicolon
+Other("s")
+AssgEqual
+Other("t")
+Semicolon
+Other("n")
+AssgEqual
+OpenPar
+Other("n")
+Add
+Other("1")
+ClosePar
+End
+End
 
 --- ast ---
 Stmt
@@ -136,8 +182,8 @@ dump: f = 13
 dump: f = 21
 
 --- variables ---
-f = 34
 n = 9
-s = 55
 t = 55
+s = 55
+f = 34
 ```
