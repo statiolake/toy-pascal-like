@@ -32,6 +32,7 @@ impl State {
             AstStmt::WhileStmt(stmt) => self.run_while_stmt(stmt),
             AstStmt::BeginStmt(stmt) => self.run_begin_stmt(stmt),
             AstStmt::AssgStmt(stmt) => self.run_assg_stmt(stmt),
+            AstStmt::DumpStmt(stmt) => self.run_dump_stmt(stmt),
         }
     }
 
@@ -64,6 +65,15 @@ impl State {
         let name = stmt.var.ident();
         let value = self.eval_arith_expr(&stmt.expr);
         self.vars.insert(name, value);
+    }
+
+    fn run_dump_stmt(&mut self, stmt: &AstDumpStmt) {
+        let name = stmt.var.ident();
+        let value = *self
+            .vars
+            .get(&name)
+            .unwrap_or_else(|| panic!("undeclared variable: {}", name));
+        println!("dump: {} = {}", name, value);
     }
 
     fn eval_bool_expr(&mut self, expr: &AstBoolExpr) -> bool {

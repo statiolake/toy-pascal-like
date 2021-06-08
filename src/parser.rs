@@ -45,6 +45,7 @@ impl Parser<'_> {
             Some(Token::If) => AstStmt::IfStmt(Box::new(self.parse_if_stmt())),
             Some(Token::While) => AstStmt::WhileStmt(Box::new(self.parse_while_stmt())),
             Some(Token::Begin) => AstStmt::BeginStmt(Box::new(self.parse_begin_stmt())),
+            Some(Token::Dump) => AstStmt::DumpStmt(Box::new(self.parse_dump_stmt())),
             _ => AstStmt::AssgStmt(Box::new(self.parse_assg_stmt())),
         }
     }
@@ -99,6 +100,13 @@ impl Parser<'_> {
         let expr = Box::new(self.parse_arith_expr());
 
         AstAssgStmt { var, expr }
+    }
+
+    fn parse_dump_stmt(&mut self) -> AstDumpStmt {
+        self.eat(Token::Dump);
+        let var = Box::new(self.parse_var());
+
+        AstDumpStmt { var }
     }
 
     fn parse_bool_expr(&mut self) -> AstBoolExpr {

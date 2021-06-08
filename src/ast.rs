@@ -4,6 +4,7 @@ pub enum AstStmt {
     WhileStmt(Box<AstWhileStmt>),
     BeginStmt(Box<AstBeginStmt>),
     AssgStmt(Box<AstAssgStmt>),
+    DumpStmt(Box<AstDumpStmt>),
 }
 
 #[derive(Debug)]
@@ -34,6 +35,11 @@ pub struct AstStmtList {
 pub struct AstAssgStmt {
     pub var: Box<AstVar>,
     pub expr: Box<AstArithExpr>,
+}
+
+#[derive(Debug)]
+pub struct AstDumpStmt {
+    pub var: Box<AstVar>,
 }
 
 #[derive(Debug)]
