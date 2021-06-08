@@ -3,17 +3,37 @@ pub mod interpreter;
 pub mod lexer;
 pub mod parser;
 
+#[derive(thiserror::Error, Debug)]
+pub enum Error<'a> {
+    #[error("parse error: {0}")]
+    ParserError(parser::ParserError<'a>),
+}
+
+impl<'a> From<parser::ParserError<'a>> for Error<'a> {
+    fn from(err: parser::ParserError<'a>) -> Self {
+        Self::ParserError(err)
+    }
+}
+
+pub type Result<'a, T, E = Error<'a>> = std::result::Result<T, E>;
+
 #[cfg(test)]
 mod tests {
+    use super::Result;
+    use crate::ast::AstStmt;
     use crate::interpreter::run;
     use crate::interpreter::State;
     use crate::lexer::tokenize;
     use crate::parser::Parser;
     use maplit::hashmap;
 
+    fn parse(source: &str) -> Result<AstStmt> {
+        let tokens = tokenize(source);
+        Parser::new(&tokens).parse_stmt().map_err(Into::into)
+    }
+
     fn run_source(source: &str) -> State {
-        let tokens = tokenize(&source);
-        let ast = Parser::new(&tokens).parse_stmt();
+        let ast = parse(source).unwrap_or_else(|e| panic!("{}", e));
         run(&ast)
     }
 

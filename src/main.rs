@@ -19,7 +19,13 @@ fn main() {
     }
     println!();
 
-    let ast = Parser::new(&tokens).parse_stmt();
+    let ast = match Parser::new(&tokens).parse_stmt() {
+        Ok(ast) => ast,
+        Err(err) => {
+            eprintln!("{}", err);
+            return;
+        }
+    };
 
     println!("--- ast ---");
     println!("{}", ast);

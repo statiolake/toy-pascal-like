@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LineColumn {
     pub line: usize,
@@ -19,6 +21,19 @@ pub struct Span {
 impl Span {
     pub fn new(start: LineColumn, end: LineColumn) -> Self {
         Self { start, end }
+    }
+}
+
+impl fmt::Display for Span {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            b,
+            "{}:{}..{}:{}",
+            self.start.line + 1,
+            self.start.column + 1,
+            self.end.line + 1,
+            self.end.column + 1,
+        )
     }
 }
 
@@ -62,6 +77,72 @@ pub enum TokenKind<'a> {
     Ident(&'a str),
     Number(i32),
     Unknown(char),
+}
+
+impl fmt::Display for TokenKind<'_> {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TokenKind::If => write!(b, "if"),
+            TokenKind::Then => write!(b, "then"),
+            TokenKind::Else => write!(b, "else"),
+            TokenKind::While => write!(b, "while"),
+            TokenKind::Do => write!(b, "do"),
+            TokenKind::Begin => write!(b, "begin"),
+            TokenKind::End => write!(b, "end"),
+            TokenKind::Comma => write!(b, ","),
+            TokenKind::Semicolon => write!(b, ";"),
+            TokenKind::AssgEqual => write!(b, ":="),
+            TokenKind::Dump => write!(b, "dump"),
+            TokenKind::Lt => write!(b, "<"),
+            TokenKind::Le => write!(b, "<="),
+            TokenKind::Gt => write!(b, ">"),
+            TokenKind::Ge => write!(b, ">="),
+            TokenKind::Eq => write!(b, "=="),
+            TokenKind::Ne => write!(b, "!="),
+            TokenKind::OpenPar => write!(b, "("),
+            TokenKind::ClosePar => write!(b, ")"),
+            TokenKind::Add => write!(b, "+"),
+            TokenKind::Sub => write!(b, "-"),
+            TokenKind::Mul => write!(b, "*"),
+            TokenKind::Div => write!(b, "/"),
+            TokenKind::Ident(ident) => write!(b, "{}", ident),
+            TokenKind::Number(number) => write!(b, "{}", number),
+            TokenKind::Unknown(unknown) => write!(b, "{}", unknown),
+        }
+    }
+}
+
+impl TokenKind<'_> {
+    pub fn label(self) -> &'static str {
+        match self {
+            TokenKind::If => "if",
+            TokenKind::Then => "then",
+            TokenKind::Else => "else",
+            TokenKind::While => "while",
+            TokenKind::Do => "do",
+            TokenKind::Begin => "begin",
+            TokenKind::End => "end",
+            TokenKind::Comma => ",",
+            TokenKind::Semicolon => ";",
+            TokenKind::AssgEqual => ":=",
+            TokenKind::Dump => "dump",
+            TokenKind::Lt => "<",
+            TokenKind::Le => "<=",
+            TokenKind::Gt => ">",
+            TokenKind::Ge => ">=",
+            TokenKind::Eq => "==",
+            TokenKind::Ne => "!=",
+            TokenKind::OpenPar => "(",
+            TokenKind::ClosePar => ")",
+            TokenKind::Add => "+",
+            TokenKind::Sub => "-",
+            TokenKind::Mul => "*",
+            TokenKind::Div => "/",
+            TokenKind::Ident(_) => "{identifier}",
+            TokenKind::Number(_) => "{number}",
+            TokenKind::Unknown(_) => "{unknown}",
+        }
+    }
 }
 
 pub fn tokenize(source: &str) -> Vec<Token> {
