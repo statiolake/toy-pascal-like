@@ -22,7 +22,9 @@ pub enum Token<'a> {
     Sub,
     Mul,
     Div,
-    Other(&'a str),
+    Ident(&'a str),
+    Number(i32),
+    Unknown(char),
 }
 
 pub fn tokenize(source: &str) -> Vec<Token> {
@@ -41,6 +43,10 @@ impl<'a> Splitter<'a> {
 
     fn rest(&self) -> &'a str {
         &self.source[self.ptr..]
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.rest().chars().next()
     }
 
     fn trim_left(&mut self) {
@@ -119,13 +125,31 @@ impl<'a> Iterator for Splitter<'a> {
             }
         }
 
-        // otherwise, treat it as an other token
-        let ch = self
-            .rest()
-            .chars()
-            .next()
-            .expect("internal error: no chars left");
+        // otherwise, treat it as an ident or number
+        let next = self.peek().expect("internal error: no chars left");
+        let token = if next.is_ascii_digit() {
+            // when next digit is number: read consecutive digits as a number
+            let number = self
+                .rest()
+                .chars()
+                .take_while(|ch| ch.is_ascii_digit())
+                .collect::<String>();
+            Token::Number(self.eat_str(&number).parse::<i32>().unwrap())
+        } else if next.is_ascii_alphabetic() {
+            // when next char is ascii alphabet: read consecutive alphabets, numbers and underscore
+            // as a identifier
+            let ident = self
+                .rest()
+                .chars()
+                .take_while(|&ch| ch.is_ascii_alphanumeric() || ch == '_')
+                .collect::<String>();
+            Token::Ident(self.eat_str(&ident))
+        } else {
+            // otherwise, it's unknown char.
+            self.eat(next);
+            Token::Unknown(next)
+        };
 
-        Some(Token::Other(self.eat(ch)))
+        Some(token)
     }
 }

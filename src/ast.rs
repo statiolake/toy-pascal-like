@@ -92,12 +92,11 @@ impl AstConst {
 }
 
 #[derive(Debug)]
-pub struct AstVar(pub char);
+pub struct AstVar(pub String);
 
 impl AstVar {
-    pub fn ident(&self) -> String {
-        let AstVar(ch) = self;
-        ch.to_string()
+    pub fn ident(&self) -> &str {
+        &self.0
     }
 }
 

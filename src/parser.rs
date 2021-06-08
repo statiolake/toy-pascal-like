@@ -142,18 +142,13 @@ impl Parser<'_> {
                 self.eat(Token::ClosePar);
                 AstArithExpr::Op { lhs, op, rhs }
             }
-            Some(Token::Other(tok)) if tok.len() == 1 => {
-                match tok.chars().next().expect("internal error: no chars") {
-                    'a'..='z' => {
-                        let var = Box::new(self.parse_var());
-                        AstArithExpr::Var(var)
-                    }
-                    '0'..='9' => {
-                        let value = Box::new(self.parse_const());
-                        AstArithExpr::Const(value)
-                    }
-                    other => panic!("unexpected char '{}' for arith-expr", other),
-                }
+            Some(Token::Number(_)) => {
+                let value = Box::new(self.parse_const());
+                AstArithExpr::Const(value)
+            }
+            Some(Token::Ident(_)) => {
+                let var = Box::new(self.parse_var());
+                AstArithExpr::Var(var)
             }
             Some(other) => panic!("unexpected token {:?} for arith-expr", other),
             None => panic!("unexpected EOF while reading arith-expr"),
@@ -171,27 +166,24 @@ impl Parser<'_> {
     }
 
     fn parse_const(&mut self) -> AstConst {
-        let value = self
+        let token = self
             .next()
             .expect("unexpected EOF while reading const value");
-        let value = match value {
-            Token::Other(tok) if tok.len() == 1 => tok.chars().next().unwrap(),
+        let value = match token {
+            Token::Number(value) => value,
             other => panic!("unexpected token {:?} for const", other),
         };
-        assert!(matches!(value, '0'..='9'), "const value out of range");
-        let value = value as u8 - b'0';
 
-        AstConst(i32::from(value))
+        AstConst(value)
     }
 
     fn parse_var(&mut self) -> AstVar {
-        let name = self.next().expect("unexpected EOF while reading var");
-        let name = match name {
-            Token::Other(tok) if tok.len() == 1 => tok.chars().next().unwrap(),
+        let token = self.next().expect("unexpected EOF while reading var");
+        let ident = match token {
+            Token::Ident(ident) => ident,
             other => panic!("unexpected token {:?} for var", other),
         };
-        assert!(matches!(name, 'a'..='z'), "var out of range");
 
-        AstVar(name)
+        AstVar(ident.to_string())
     }
 }

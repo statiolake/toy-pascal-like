@@ -16,8 +16,10 @@ Currently the syntax follows the following BNF:
 <compare-op> ::= < | > | <= | >= | == | !=
 <arith-expr> ::= <var> | <const> | (<arith-expr><arith-op><arith-expr>)
 <arith-op> ::= + | - | * | /
-<const> ::= 0 | 1 | ... | 9
-<var> ::= a | b | ... | z
+<const> ::= <digit> | <digit><const>
+<digit> ::= 0 | 1 | 2 | ... | 9
+<var> ::= <letter> | <var><letter> | <var><digit>
+<letter> ::= a | b | ... | z
 ```
 
 # Usage
@@ -47,49 +49,49 @@ The example output for `fib.pas`:
 ```text
 --- tokens ---
 Begin
-Other("f")
+Ident("a_0")
 AssgEqual
-Other("0")
+Number(0)
 Semicolon
-Other("s")
+Ident("a_1")
 AssgEqual
-Other("1")
+Number(1)
 Semicolon
-Other("n")
+Ident("i")
 AssgEqual
-Other("0")
+Number(0)
 Semicolon
 While
-Other("n")
+Ident("i")
 Lt
-Other("9")
+Number(20)
 Do
 Begin
 Dump
-Other("f")
+Ident("a_0")
 Semicolon
-Other("t")
+Ident("tmp")
 AssgEqual
 OpenPar
-Other("f")
+Ident("a_0")
 Add
-Other("s")
+Ident("a_1")
 ClosePar
 Semicolon
-Other("f")
+Ident("a_0")
 AssgEqual
-Other("s")
+Ident("a_1")
 Semicolon
-Other("s")
+Ident("a_1")
 AssgEqual
-Other("t")
+Ident("tmp")
 Semicolon
-Other("n")
+Ident("i")
 AssgEqual
 OpenPar
-Other("n")
+Ident("i")
 Add
-Other("1")
+Number(1)
 ClosePar
 End
 End
@@ -99,19 +101,19 @@ Stmt
     Begin
         Stmt
             Assg
-              var: Var(f)
+              var: Var(a_0)
               expr:
                 ArithExpr
                   Const(0)
         Stmt
             Assg
-              var: Var(s)
+              var: Var(a_1)
               expr:
                 ArithExpr
                   Const(1)
         Stmt
             Assg
-              var: Var(n)
+              var: Var(i)
               expr:
                 ArithExpr
                   Const(0)
@@ -121,49 +123,49 @@ Stmt
                 BoolExpr
                   lhs:
                     ArithExpr
-                      Var(n)
+                      Var(i)
                   op: CompareOp(<)
                   rhs:
                     ArithExpr
-                      Const(9)
+                      Const(20)
               body:
                 Stmt
                     Begin
                         Stmt
                             Dump
-                              Var(f)
+                              Var(a_0)
                         Stmt
                             Assg
-                              var: Var(t)
+                              var: Var(tmp)
                               expr:
                                 ArithExpr
                                   lhs:
                                     ArithExpr
-                                      Var(f)
+                                      Var(a_0)
                                   op: ArithOp(+)
                                   rhs:
                                     ArithExpr
-                                      Var(s)
+                                      Var(a_1)
                         Stmt
                             Assg
-                              var: Var(f)
+                              var: Var(a_0)
                               expr:
                                 ArithExpr
-                                  Var(s)
+                                  Var(a_1)
                         Stmt
                             Assg
-                              var: Var(s)
+                              var: Var(a_1)
                               expr:
                                 ArithExpr
-                                  Var(t)
+                                  Var(tmp)
                         Stmt
                             Assg
-                              var: Var(n)
+                              var: Var(i)
                               expr:
                                 ArithExpr
                                   lhs:
                                     ArithExpr
-                                      Var(n)
+                                      Var(i)
                                   op: ArithOp(+)
                                   rhs:
                                     ArithExpr
@@ -171,19 +173,30 @@ Stmt
 
 
 --- run ---
-dump: f = 0
-dump: f = 1
-dump: f = 1
-dump: f = 2
-dump: f = 3
-dump: f = 5
-dump: f = 8
-dump: f = 13
-dump: f = 21
+dump: a_0 = 0
+dump: a_0 = 1
+dump: a_0 = 1
+dump: a_0 = 2
+dump: a_0 = 3
+dump: a_0 = 5
+dump: a_0 = 8
+dump: a_0 = 13
+dump: a_0 = 21
+dump: a_0 = 34
+dump: a_0 = 55
+dump: a_0 = 89
+dump: a_0 = 144
+dump: a_0 = 233
+dump: a_0 = 377
+dump: a_0 = 610
+dump: a_0 = 987
+dump: a_0 = 1597
+dump: a_0 = 2584
+dump: a_0 = 4181
 
 --- variables ---
-n = 9
-t = 55
-s = 55
-f = 34
+a_0 = 6765
+a_1 = 10946
+tmp = 10946
+i = 20
 ```

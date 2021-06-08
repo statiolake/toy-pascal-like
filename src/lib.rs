@@ -24,10 +24,10 @@ mod tests {
         assert_eq! {
             state.variables(),
             &hashmap! {
-                "n".to_string() => 9,
-                "t".to_string() => 55,
-                "s".to_string() => 55,
-                "f".to_string() => 34,
+                "a_0".to_string() => 6765,
+                "a_1".to_string() => 10946,
+                "i".to_string() => 20,
+                "tmp".to_string() => 10946,
             }
         };
     }

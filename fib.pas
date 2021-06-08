@@ -1,12 +1,12 @@
 begin
-    f := 0;
-    s := 1;
-    n := 0;
-    while n < 9 do begin
-        dump f;
-        t := (f + s);
-        f := s;
-        s := t;
-        n := (n + 1)
+    a_0 := 0;
+    a_1 := 1;
+    i := 0;
+    while i < 000020 do begin
+        dump a_0;
+        tmp := (a_0 + a_1);
+        a_0 := a_1;
+        a_1 := tmp;
+        i := (i + 1)
     end
 end

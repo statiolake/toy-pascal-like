@@ -65,7 +65,7 @@ impl State {
     }
 
     fn run_assg_stmt(&mut self, stmt: &AstAssgStmt) {
-        let name = stmt.var.ident();
+        let name = stmt.var.ident().to_string();
         let value = self.eval_arith_expr(&stmt.expr);
         self.vars.insert(name, value);
     }
@@ -74,7 +74,7 @@ impl State {
         let name = stmt.var.ident();
         let value = *self
             .vars
-            .get(&name)
+            .get(name)
             .unwrap_or_else(|| panic!("undeclared variable: {}", name));
         println!("dump: {} = {}", name, value);
     }
@@ -96,7 +96,7 @@ impl State {
         match expr {
             AstArithExpr::Var(var) => *self
                 .vars
-                .get(&var.ident())
+                .get(var.ident())
                 .unwrap_or_else(|| panic!("undeclared variable: {}", var.ident())),
             AstArithExpr::Const(value) => value.value(),
             AstArithExpr::Op { lhs, op, rhs } => {
