@@ -14,9 +14,13 @@ pub struct State {
 
 impl State {
     pub fn display(&self) {
-        for (name, value) in &self.vars {
+        for (name, value) in self.variables() {
             println!("{} = {}", name, value);
         }
+    }
+
+    pub fn variables(&self) -> &HashMap<String, i32> {
+        &self.vars
     }
 
     fn new() -> Self {
