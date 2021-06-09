@@ -78,4 +78,28 @@ end
         let state = run(&ast).expect("it should run");
         assert!((10..=20).contains(&state.variables()["dice"]));
     }
+
+    #[test]
+    fn recursive_fncall() {
+        let source = r#"
+begin
+    function Fib(n); begin
+        if n == 0 then
+            Fib := 0
+        else if n == 1 then
+            Fib := 1
+        else begin
+            Fib := (Fib((n - 1)) + Fib((n - 2)))
+        end
+    end;
+
+    x := Fib(25);
+    dump x
+end
+"#;
+        let tokens = tokenize(source);
+        let ast = parse(&tokens).expect("it should parse");
+        let state = run(&ast).expect("it should run");
+        assert_eq!(state.variables()["x"], 75025);
+    }
 }
