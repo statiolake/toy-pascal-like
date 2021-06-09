@@ -50,129 +50,109 @@ $ cargo run fib.pas
 The example output for `fib.pas`:
 
 ```text
---- tokens ---
-Begin
-Ident("a_0")
-AssgEqual
-Number(0)
-Semicolon
-Ident("a_1")
-AssgEqual
-Number(1)
-Semicolon
-Ident("i")
-AssgEqual
-Number(0)
-Semicolon
-While
-Ident("i")
-Lt
-Number(20)
-Do
-Begin
-Dump
-Ident("a_0")
-Semicolon
-Ident("tmp")
-AssgEqual
-OpenPar
-Ident("a_0")
-Add
-Ident("a_1")
-ClosePar
-Semicolon
-Ident("a_0")
-AssgEqual
-Ident("a_1")
-Semicolon
-Ident("a_1")
-AssgEqual
-Ident("tmp")
-Semicolon
-Ident("i")
-AssgEqual
-OpenPar
-Ident("i")
-Add
-Number(1)
-ClosePar
-End
-End
-
 --- ast ---
-Stmt
-    Begin
-        Stmt
-            Assg
-              var: Var(a_0)
+1:1..12:4 @ Stmt
+    1:1..12:4 @ Begin
+        2:5..11:8 @ 2:5..2:13 @ Stmt
+            2:5..2:13 @ Assg
+              var: 2:5..2:8 @ Var(Ident(a_0))
               expr:
-                ArithExpr
-                  Const(0)
-        Stmt
-            Assg
-              var: Var(a_1)
+                2:12..2:13 @ ArithExpr
+                    2:12..2:13 @ MulExpr
+                        2:12..2:13 @ UnaryExpr
+                            2:12..2:13 @ PrimaryExpr
+                                2:12..2:13 @ Const(0)
+        3:5..11:8 @ 3:5..3:13 @ Stmt
+            3:5..3:13 @ Assg
+              var: 3:5..3:8 @ Var(Ident(a_1))
               expr:
-                ArithExpr
-                  Const(1)
-        Stmt
-            Assg
-              var: Var(i)
+                3:12..3:13 @ ArithExpr
+                    3:12..3:13 @ MulExpr
+                        3:12..3:13 @ UnaryExpr
+                            3:12..3:13 @ PrimaryExpr
+                                3:12..3:13 @ Const(1)
+        4:5..11:8 @ 4:5..4:11 @ Stmt
+            4:5..4:11 @ Assg
+              var: 4:5..4:6 @ Var(Ident(i))
               expr:
-                ArithExpr
-                  Const(0)
-        Stmt
-            While
+                4:10..4:11 @ ArithExpr
+                    4:10..4:11 @ MulExpr
+                        4:10..4:11 @ UnaryExpr
+                            4:10..4:11 @ PrimaryExpr
+                                4:10..4:11 @ Const(0)
+        5:5..11:8 @ 5:5..11:8 @ Stmt
+            5:5..11:8 @ While
               cond:
-                BoolExpr
+                5:11..5:17 @ BoolExpr
                   lhs:
-                    ArithExpr
-                      Var(i)
-                  op: CompareOp(<)
+                    5:11..5:12 @ ArithExpr
+                        5:11..5:12 @ MulExpr
+                            5:11..5:12 @ UnaryExpr
+                                5:11..5:12 @ PrimaryExpr
+                                    5:11..5:12 @ Var(Ident(i))
+                  op: 5:13..5:14 @ CompareOp(<)
                   rhs:
-                    ArithExpr
-                      Const(20)
+                    5:15..5:17 @ ArithExpr
+                        5:15..5:17 @ MulExpr
+                            5:15..5:17 @ UnaryExpr
+                                5:15..5:17 @ PrimaryExpr
+                                    5:15..5:17 @ Const(20)
               body:
-                Stmt
-                    Begin
-                        Stmt
-                            Dump
-                              Var(a_0)
-                        Stmt
-                            Assg
-                              var: Var(tmp)
+                5:21..11:8 @ Stmt
+                    5:21..11:8 @ Begin
+                        6:9..10:19 @ 6:9..6:17 @ Stmt
+                            6:9..6:17 @ Dump
+                              6:14..6:17 @ Var(Ident(a_0))
+                        7:9..10:19 @ 7:9..7:25 @ Stmt
+                            7:9..7:25 @ Assg
+                              var: 7:9..7:12 @ Var(Ident(tmp))
                               expr:
-                                ArithExpr
+                                7:16..7:25 @ ArithExpr
                                   lhs:
-                                    ArithExpr
-                                      Var(a_0)
-                                  op: ArithOp(+)
+                                    7:16..7:19 @ ArithExpr
+                                        7:16..7:19 @ MulExpr
+                                            7:16..7:19 @ UnaryExpr
+                                                7:16..7:19 @ PrimaryExpr
+                                                    7:16..7:19 @ Var(Ident(a_0))
                                   rhs:
-                                    ArithExpr
-                                      Var(a_1)
-                        Stmt
-                            Assg
-                              var: Var(a_0)
+                                    7:22..7:25 @ MulExpr
+                                        7:22..7:25 @ UnaryExpr
+                                            7:22..7:25 @ PrimaryExpr
+                                                7:22..7:25 @ Var(Ident(a_1))
+                        8:9..10:19 @ 8:9..8:19 @ Stmt
+                            8:9..8:19 @ Assg
+                              var: 8:9..8:12 @ Var(Ident(a_0))
                               expr:
-                                ArithExpr
-                                  Var(a_1)
-                        Stmt
-                            Assg
-                              var: Var(a_1)
+                                8:16..8:19 @ ArithExpr
+                                    8:16..8:19 @ MulExpr
+                                        8:16..8:19 @ UnaryExpr
+                                            8:16..8:19 @ PrimaryExpr
+                                                8:16..8:19 @ Var(Ident(a_1))
+                        9:9..10:19 @ 9:9..9:19 @ Stmt
+                            9:9..9:19 @ Assg
+                              var: 9:9..9:12 @ Var(Ident(a_1))
                               expr:
-                                ArithExpr
-                                  Var(tmp)
-                        Stmt
-                            Assg
-                              var: Var(i)
+                                9:16..9:19 @ ArithExpr
+                                    9:16..9:19 @ MulExpr
+                                        9:16..9:19 @ UnaryExpr
+                                            9:16..9:19 @ PrimaryExpr
+                                                9:16..9:19 @ Var(Ident(tmp))
+                        10:9..10:19 @ 10:9..10:19 @ Stmt
+                            10:9..10:19 @ Assg
+                              var: 10:9..10:10 @ Var(Ident(i))
                               expr:
-                                ArithExpr
+                                10:14..10:19 @ ArithExpr
                                   lhs:
-                                    ArithExpr
-                                      Var(i)
-                                  op: ArithOp(+)
+                                    10:14..10:15 @ ArithExpr
+                                        10:14..10:15 @ MulExpr
+                                            10:14..10:15 @ UnaryExpr
+                                                10:14..10:15 @ PrimaryExpr
+                                                    10:14..10:15 @ Var(Ident(i))
                                   rhs:
-                                    ArithExpr
-                                      Const(1)
+                                    10:18..10:19 @ MulExpr
+                                        10:18..10:19 @ UnaryExpr
+                                            10:18..10:19 @ PrimaryExpr
+                                                10:18..10:19 @ Const(1)
 
 
 --- run ---
@@ -197,9 +177,9 @@ dump: a_0 = 1597
 dump: a_0 = 2584
 dump: a_0 = 4181
 
---- variables ---
+--- final state ---
 a_0 = 6765
+i = 20
 a_1 = 10946
 tmp = 10946
-i = 20
 ```
