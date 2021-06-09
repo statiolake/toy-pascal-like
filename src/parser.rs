@@ -471,7 +471,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                     expr,
                 ))
             }
-            (_, TokenKind::Number(_)) => {
+            (_, TokenKind::IntConst(_)) | (_, TokenKind::FloatConst(_)) => {
                 let value = self.parse_const()?;
                 Ok(AstPrimaryExpr::from_const(value))
             }
@@ -491,7 +491,8 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                 token,
                 Some(vec![
                     TokenKind::OpenPar,
-                    TokenKind::Number(0),
+                    TokenKind::IntConst(0),
+                    TokenKind::FloatConst(0.0),
                     TokenKind::Ident(""),
                 ]),
             )),
@@ -543,13 +544,17 @@ impl<'i, 'toks> Parser<'i, 'toks> {
 
     fn parse_const(&mut self) -> Result<'i, Ast<AstConst>> {
         match self.next_token().map(|t| (t, t.kind))? {
-            (tok, TokenKind::Number(value)) => Ok(Ast {
-                ast: AstConst(value),
+            (tok, TokenKind::IntConst(value)) => Ok(Ast {
+                ast: AstConst::Int(value),
+                span: tok.span,
+            }),
+            (tok, TokenKind::FloatConst(value)) => Ok(Ast {
+                ast: AstConst::Float(value),
                 span: tok.span,
             }),
             (tok, _) => Err(ParserError::unexpected_token(
                 tok,
-                Some(vec![TokenKind::Number(0)]),
+                Some(vec![TokenKind::IntConst(0), TokenKind::FloatConst(0.0)]),
             )),
         }
     }

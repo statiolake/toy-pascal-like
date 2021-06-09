@@ -1,9 +1,12 @@
 use crate::ast::*;
 use crate::lexer::Span;
 use dyn_clone::DynClone;
+use itertools::izip;
+use itertools::Itertools as _;
 use rand::prelude::*;
+use std::cmp::{PartialEq, PartialOrd};
 use std::collections::{HashMap, HashSet};
-use std::io;
+use std::{fmt, io};
 
 pub type Result<T, E = InterpreterError> = std::result::Result<T, E>;
 
@@ -42,6 +45,12 @@ pub enum InterpreterErrorKind {
 
     #[error("return value is not specified")]
     NoReturnValue { fnname: String },
+
+    #[error("type mismatch: expected `{expected}`, actual `{actual}`")]
+    TyMismatch { expected: ValueTy, actual: ValueTy },
+
+    #[error("binary operation `{op}` is not supported for `{ty}`")]
+    UnsupportedBinaryOperation { op: String, ty: ValueTy },
 }
 
 impl InterpreterErrorKind {
@@ -55,6 +64,10 @@ impl InterpreterErrorKind {
             }
             InterpreterErrorKind::AlreadyUsedParameterName { .. } => "already used".to_string(),
             InterpreterErrorKind::NoReturnValue { .. } => "no return value".to_string(),
+            InterpreterErrorKind::TyMismatch { .. } => "type mismatch".to_string(),
+            InterpreterErrorKind::UnsupportedBinaryOperation { op, .. } => {
+                format!("{} not supported for this type", op)
+            }
         }
     }
 
@@ -81,7 +94,89 @@ pub fn run(stmt: &Ast<AstStmt>) -> Result<State> {
     Ok(state)
 }
 
-trait FunctionBody<'a>: Fn(&State<'a>, Span, &[i32]) -> Result<i32> + DynClone + 'a {}
+#[derive(Clone)]
+struct Function<'a> {
+    def_span: Span,
+    name: String,
+    params: Vec<Param>,
+    ret_ty: ValueTy,
+    body: Box<dyn FunctionBody<'a>>,
+}
+
+#[derive(Debug, Clone)]
+struct Param {
+    name: String,
+    ty: ValueTy,
+}
+
+impl Param {
+    fn new(name: String, ty: ValueTy) -> Self {
+        Self { name, ty }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Arg {
+    span: Span,
+    value: Value,
+}
+
+impl Arg {
+    pub fn new(span: Span, value: Value) -> Self {
+        Self { span, value }
+    }
+}
+
+impl<'a> Function<'a> {
+    pub fn new(
+        def_span: Span,
+        name: String,
+        params: Vec<Param>,
+        ret_ty: ValueTy,
+        body: Box<dyn FunctionBody<'a>>,
+    ) -> Self {
+        Self {
+            def_span,
+            name,
+            params,
+            ret_ty,
+            body,
+        }
+    }
+
+    pub fn call(&self, state: &State<'a>, span: Span, args: &[Arg]) -> Result<Value> {
+        // arity check
+        if self.params.len() != args.len() {
+            return Err(InterpreterError {
+                span,
+                kind: InterpreterErrorKind::ArityMismatch {
+                    name: self.name.clone(),
+                    required: self.params.len(),
+                    provided: args.len(),
+                },
+            });
+        }
+
+        // type check
+        for (param, arg) in izip!(&self.params, args) {
+            let arg_ty = arg.value.ty();
+            if param.ty != arg_ty {
+                return Err(InterpreterError {
+                    span: arg.span,
+                    kind: InterpreterErrorKind::TyMismatch {
+                        expected: param.ty,
+                        actual: arg_ty,
+                    },
+                });
+            }
+        }
+
+        let args = args.iter().map(|arg| arg.value.clone()).collect_vec();
+        (self.body)(state, span, &args)
+    }
+}
+
+trait FunctionBody<'a>: Fn(&State<'a>, Span, &[Value]) -> Result<Value> + DynClone + 'a {}
 impl Clone for Box<dyn FunctionBody<'_>> {
     fn clone(&self) -> Self {
         dyn_clone::clone_box(&**self)
@@ -90,43 +185,94 @@ impl Clone for Box<dyn FunctionBody<'_>> {
 
 impl<'a, F> FunctionBody<'a> for F
 where
-    F: Fn(&State<'a>, Span, &[i32]) -> Result<i32>,
+    F: Fn(&State<'a>, Span, &[Value]) -> Result<Value>,
     F: DynClone,
     F: 'a,
 {
 }
 
-#[derive(Clone)]
-struct Function<'a> {
-    name: String,
-    arity: usize,
-    body: Box<dyn FunctionBody<'a>>,
+#[derive(Debug, Clone)]
+pub enum Value {
+    Int(i32),
+    Float(f64),
 }
 
-impl<'a> Function<'a> {
-    pub fn new(name: String, arity: usize, body: Box<dyn FunctionBody<'a>>) -> Self {
-        Self { name, arity, body }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ValueTy {
+    Int,
+    Float,
+}
+
+impl Value {
+    pub fn ty(&self) -> ValueTy {
+        match self {
+            Value::Int(_) => ValueTy::Int,
+            Value::Float(_) => ValueTy::Float,
+        }
     }
 
-    pub fn call(&self, state: &State<'a>, span: Span, args: &[i32]) -> Result<i32> {
-        if self.arity != args.len() {
-            Err(InterpreterError {
+    pub fn int(&self, span: Span) -> Result<i32> {
+        match self {
+            Value::Int(int) => Ok(*int),
+            _ => Err(InterpreterError {
                 span,
-                kind: InterpreterErrorKind::ArityMismatch {
-                    name: self.name.clone(),
-                    required: self.arity,
-                    provided: args.len(),
+                kind: InterpreterErrorKind::TyMismatch {
+                    expected: ValueTy::Int,
+                    actual: self.ty(),
                 },
-            })
-        } else {
-            (self.body)(state, span, args)
+            }),
+        }
+    }
+
+    pub fn float(&self, span: Span) -> Result<f64> {
+        match self {
+            Value::Float(float) => Ok(*float),
+            _ => Err(InterpreterError {
+                span,
+                kind: InterpreterErrorKind::TyMismatch {
+                    expected: ValueTy::Float,
+                    actual: self.ty(),
+                },
+            }),
+        }
+    }
+
+    pub fn unwrap_int(&self) -> i32 {
+        match self {
+            Value::Int(int) => *int,
+            _ => panic!("value is actually not an int"),
+        }
+    }
+
+    pub fn unwrap_float(&self) -> f64 {
+        match self {
+            Value::Float(float) => *float,
+            _ => panic!("value is actually not an float"),
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Value::Int(int) => write!(b, "{}", int),
+            Value::Float(float) => write!(b, "{}", float),
+        }
+    }
+}
+
+impl fmt::Display for ValueTy {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ValueTy::Int => write!(b, "int"),
+            ValueTy::Float => write!(b, "float"),
         }
     }
 }
 
 #[derive(Clone)]
 pub struct State<'a> {
-    vars: HashMap<String, i32>,
+    vars: HashMap<String, Value>,
     funcs: HashMap<String, Function<'a>>,
 }
 
@@ -137,7 +283,7 @@ impl<'a> State<'a> {
         }
     }
 
-    pub fn variables(&self) -> &HashMap<String, i32> {
+    pub fn variables(&self) -> &HashMap<String, Value> {
         &self.vars
     }
 
@@ -152,12 +298,17 @@ impl<'a> State<'a> {
         let mut state = State::new();
 
         let random_int = Function::new(
+            Span::new_zero(),
             "RandomInt".to_string(),
-            2,
+            vec![
+                Param::new("low".to_string(), ValueTy::Int),
+                Param::new("high".to_string(), ValueTy::Int),
+            ],
+            ValueTy::Int,
             Box::new(|_, _, args| {
-                let low = args[0];
-                let high = args[1];
-                Ok(thread_rng().gen_range(low..=high))
+                let low = args[0].unwrap_int();
+                let high = args[1].unwrap_int();
+                Ok(Value::Int(thread_rng().gen_range(low..=high)))
             }),
         );
         state
@@ -165,12 +316,16 @@ impl<'a> State<'a> {
             .expect("internal error");
 
         let read_int = Function::new(
+            Span::new_zero(),
             "ReadInt".to_string(),
-            0,
+            vec![],
+            ValueTy::Int,
             Box::new(|_, _, _| {
                 let mut line = String::new();
                 io::stdin().read_line(&mut line).unwrap();
-                Ok(line.trim().parse::<i32>().expect("failed to parse stdin"))
+                Ok(Value::Int(
+                    line.trim().parse::<i32>().expect("failed to parse stdin"),
+                ))
             }),
         );
         state
@@ -191,15 +346,15 @@ impl<'a> State<'a> {
         }
     }
 
-    fn assign_to_var(&mut self, _span: Span, var: &str, value: i32) -> Result<()> {
+    fn assign_to_var(&mut self, _span: Span, var: &str, value: Value) -> Result<()> {
         self.vars.insert(var.to_string(), value);
         Ok(())
     }
 
-    fn get_var(&self, span: Span, name: &str) -> Result<i32> {
+    fn get_var(&self, span: Span, name: &str) -> Result<Value> {
         self.vars
             .get(name)
-            .copied()
+            .map(Clone::clone)
             .ok_or_else(|| InterpreterError {
                 span,
                 kind: InterpreterErrorKind::UndeclaredVariable {
@@ -243,13 +398,22 @@ impl<'a> State<'a> {
             }
         }
 
+        // TODO: currently ValueTy is always int
+        let params = params
+            .into_iter()
+            .map(|p| Param::new(p.ast.ident().to_string(), ValueTy::Int))
+            .collect_vec();
+
+        // TODO: currently ret_ty is always int
         let func = Function::new(
+            stmt.span,
             name.to_string(),
-            params.len(),
+            params.clone(),
+            ValueTy::Int,
             Box::new(move |state, span, args| {
                 let mut inner_state = state.clone();
                 for (idx, param) in params.iter().enumerate() {
-                    inner_state.assign_to_var(span, param.ast.ident(), args[idx])?;
+                    inner_state.assign_to_var(span, &param.name, args[idx].clone())?;
                 }
                 inner_state.run_begin_stmt(&stmt.ast.body)?;
                 inner_state
@@ -318,58 +482,127 @@ impl<'a> State<'a> {
     fn eval_bool_expr(&mut self, expr: &'a Ast<AstBoolExpr>) -> Result<bool> {
         let lhs = self.eval_arith_expr(&expr.ast.lhs)?;
         let rhs = self.eval_arith_expr(&expr.ast.rhs)?;
-        match &expr.ast.op.ast {
-            AstCompareOp::Lt => Ok(lhs < rhs),
-            AstCompareOp::Gt => Ok(lhs > rhs),
-            AstCompareOp::Le => Ok(lhs <= rhs),
-            AstCompareOp::Ge => Ok(lhs >= rhs),
-            AstCompareOp::Eq => Ok(lhs == rhs),
-            AstCompareOp::Ne => Ok(lhs != rhs),
+
+        fn compare<T: PartialEq + PartialOrd>(op: &AstCompareOp, lhs: T, rhs: T) -> bool {
+            match &op {
+                AstCompareOp::Lt => lhs < rhs,
+                AstCompareOp::Gt => lhs > rhs,
+                AstCompareOp::Le => lhs <= rhs,
+                AstCompareOp::Ge => lhs >= rhs,
+                AstCompareOp::Eq => lhs == rhs,
+                AstCompareOp::Ne => lhs != rhs,
+            }
+        }
+
+        if let Ok(lhs) = lhs.int(expr.ast.lhs.span) {
+            let rhs = rhs.int(expr.ast.rhs.span)?;
+            Ok(compare(&expr.ast.op.ast, lhs, rhs))
+        } else if let Ok(lhs) = lhs.float(expr.ast.lhs.span) {
+            let rhs = rhs.float(expr.ast.rhs.span)?;
+            Ok(compare(&expr.ast.op.ast, lhs, rhs))
+        } else {
+            Err(InterpreterError {
+                span: expr.ast.lhs.span,
+                kind: InterpreterErrorKind::UnsupportedBinaryOperation {
+                    op: expr.ast.op.ast.to_string(),
+                    ty: lhs.ty(),
+                },
+            })
         }
     }
 
-    fn eval_arith_expr(&mut self, expr: &'a Ast<AstArithExpr>) -> Result<i32> {
+    fn eval_arith_expr(&mut self, expr: &'a Ast<AstArithExpr>) -> Result<Value> {
+        macro_rules! binop {
+            ($lhs:ident $op:tt $rhs:ident) => {{
+                let lhs = self.eval_arith_expr(&$lhs)?;
+                let rhs = self.eval_mul_expr(&$rhs)?;
+                if let Ok(lhs) = lhs.int($lhs.span) {
+                    let rhs = rhs.int($rhs.span)?;
+                    Ok(Value::Int(lhs $op rhs))
+                } else if let Ok(lhs) = lhs.float($lhs.span) {
+                    let rhs = rhs.float($rhs.span)?;
+                    Ok(Value::Float(lhs $op rhs))
+                } else {
+                    Err(InterpreterError {
+                        span: $lhs.span,
+                        kind: InterpreterErrorKind::UnsupportedBinaryOperation {
+                            op: stringify!($op).to_string(),
+                            ty: lhs.ty(),
+                        },
+                    })
+                }
+            }};
+        }
+
         match &expr.ast {
             AstArithExpr::MulExpr(expr) => self.eval_mul_expr(&expr),
-            AstArithExpr::Add(lhs, rhs) => {
-                Ok(self.eval_arith_expr(&lhs)? + self.eval_mul_expr(&rhs)?)
-            }
-            AstArithExpr::Sub(lhs, rhs) => {
-                Ok(self.eval_arith_expr(&lhs)? - self.eval_mul_expr(&rhs)?)
-            }
+            AstArithExpr::Add(lhs, rhs) => binop!(lhs + rhs),
+            AstArithExpr::Sub(lhs, rhs) => binop!(lhs - rhs),
         }
     }
 
-    fn eval_mul_expr(&mut self, expr: &'a Ast<AstMulExpr>) -> Result<i32> {
+    fn eval_mul_expr(&mut self, expr: &'a Ast<AstMulExpr>) -> Result<Value> {
+        macro_rules! binop {
+            ($lhs:ident $op:tt $rhs:ident) => {{
+                let lhs = self.eval_mul_expr(&$lhs)?;
+                let rhs = self.eval_unary_expr(&$rhs)?;
+                if let Ok(lhs) = lhs.int($lhs.span) {
+                    let rhs = rhs.int($rhs.span)?;
+                    Ok(Value::Int(lhs $op rhs))
+                } else if let Ok(lhs) = lhs.float($lhs.span) {
+                    let rhs = rhs.float($rhs.span)?;
+                    Ok(Value::Float(lhs $op rhs))
+                } else {
+                    Err(InterpreterError {
+                        span: $lhs.span,
+                        kind: InterpreterErrorKind::UnsupportedBinaryOperation {
+                            op: stringify!($op).to_string(),
+                            ty: lhs.ty(),
+                        },
+                    })
+                }
+            }};
+        }
+
         match &expr.ast {
             AstMulExpr::UnaryExpr(expr) => self.eval_unary_expr(expr),
-            AstMulExpr::Mul(lhs, rhs) => Ok(self.eval_mul_expr(lhs)? * self.eval_unary_expr(rhs)?),
-            AstMulExpr::Div(lhs, rhs) => Ok(self.eval_mul_expr(lhs)? / self.eval_unary_expr(rhs)?),
+            AstMulExpr::Mul(lhs, rhs) => binop!(lhs * rhs),
+            AstMulExpr::Div(lhs, rhs) => binop!(lhs / rhs),
         }
     }
 
-    fn eval_unary_expr(&mut self, expr: &'a Ast<AstUnaryExpr>) -> Result<i32> {
+    fn eval_unary_expr(&mut self, expr: &'a Ast<AstUnaryExpr>) -> Result<Value> {
         match &expr.ast {
             AstUnaryExpr::PrimaryExpr(expr) => self.eval_primary_expr(expr),
-            AstUnaryExpr::Neg(expr) => self.eval_unary_expr(expr).map(|x| -x),
+            AstUnaryExpr::Neg(expr) => self.eval_unary_expr(expr).map(|value| match value {
+                Value::Int(int) => Value::Int(-int),
+                Value::Float(float) => Value::Float(-float),
+            }),
         }
     }
 
-    fn eval_primary_expr(&mut self, expr: &'a Ast<AstPrimaryExpr>) -> Result<i32> {
+    fn eval_primary_expr(&mut self, expr: &'a Ast<AstPrimaryExpr>) -> Result<Value> {
         match &expr.ast {
             AstPrimaryExpr::Var(var) => self.get_var(expr.span, var.ast.ident()),
-            AstPrimaryExpr::Const(value) => Ok(value.ast.value()),
+            AstPrimaryExpr::Const(value) => self.eval_const(value),
             AstPrimaryExpr::FnCall(fncall) => self.eval_fncall(fncall),
             AstPrimaryExpr::Paren(expr) => self.eval_arith_expr(expr),
         }
     }
 
-    fn eval_fncall(&mut self, fncall: &'a Ast<AstFnCall>) -> Result<i32> {
+    fn eval_const(&mut self, value: &'a Ast<AstConst>) -> Result<Value> {
+        match value.ast {
+            AstConst::Int(int) => Ok(Value::Int(int)),
+            AstConst::Float(float) => Ok(Value::Float(float)),
+        }
+    }
+
+    fn eval_fncall(&mut self, fncall: &'a Ast<AstFnCall>) -> Result<Value> {
         let ident = fncall.ast.ident.ast.ident();
         let mut args = vec![];
         let mut curr = &fncall.ast.args.ast;
         while let AstArgumentList::Nonempty { expr, next } = curr {
-            args.push(self.eval_arith_expr(&*expr)?);
+            args.push(Arg::new(expr.span, self.eval_arith_expr(&*expr)?));
             curr = &next.ast;
         }
 
@@ -380,6 +613,16 @@ impl<'a> State<'a> {
             },
         })?;
 
-        fnptr.call(self, fncall.span, &args)
+        let value = fnptr.call(self, fncall.span, &args)?;
+        match fnptr.ret_ty {
+            ValueTy::Int => {
+                value.int(fnptr.def_span)?;
+            }
+            ValueTy::Float => {
+                value.float(fnptr.def_span)?;
+            }
+        }
+
+        Ok(value)
     }
 }

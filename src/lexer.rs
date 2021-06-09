@@ -50,7 +50,7 @@ impl fmt::Display for Span {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Token<'a> {
     pub span: Span,
     pub kind: TokenKind<'a>,
@@ -62,7 +62,7 @@ impl<'a> Token<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenKind<'a> {
     Function,
     If,
@@ -89,7 +89,8 @@ pub enum TokenKind<'a> {
     Mul,
     Div,
     Ident(&'a str),
-    Number(i32),
+    IntConst(i32),
+    FloatConst(f64),
     Unknown(char),
 }
 
@@ -121,7 +122,8 @@ impl fmt::Display for TokenKind<'_> {
             TokenKind::Mul => write!(b, "*"),
             TokenKind::Div => write!(b, "/"),
             TokenKind::Ident(ident) => write!(b, "{}", ident),
-            TokenKind::Number(number) => write!(b, "{}", number),
+            TokenKind::IntConst(int) => write!(b, "{}", int),
+            TokenKind::FloatConst(float) => write!(b, "{}", float),
             TokenKind::Unknown(unknown) => write!(b, "{}", unknown),
         }
     }
@@ -155,7 +157,8 @@ impl TokenKind<'_> {
             TokenKind::Mul => "*",
             TokenKind::Div => "/",
             TokenKind::Ident(_) => "{identifier}",
-            TokenKind::Number(_) => "{number}",
+            TokenKind::IntConst(_) => "{integer}",
+            TokenKind::FloatConst(_) => "{float}",
             TokenKind::Unknown(_) => "{unknown}",
         }
     }
@@ -281,16 +284,24 @@ impl<'a> Iterator for Splitter<'a> {
         // otherwise, treat it as an ident or number
         let next = self.peek().expect("internal error: no chars left");
         let token = if next.is_ascii_digit() {
-            // when next digit is number: read consecutive digits as a number
+            // when next digit is number: read consecutive digits and one as a number
+            let mut first_dot = true;
             let number = self
                 .rest()
                 .chars()
-                .take_while(|ch| ch.is_ascii_digit())
+                .take_while(|&ch| {
+                    let take_this = ch.is_ascii_digit() || (first_dot && ch == '.');
+                    first_dot = first_dot && ch != '.';
+                    take_this
+                })
                 .collect::<String>();
             let (value, start, end) = self.eat_str(&number);
             let span = Span::new(start, end);
-            let value = value.parse::<i32>().unwrap();
-            Token::new(span, TokenKind::Number(value))
+            if value.contains('.') {
+                Token::new(span, TokenKind::FloatConst(value.parse::<f64>().unwrap()))
+            } else {
+                Token::new(span, TokenKind::IntConst(value.parse::<i32>().unwrap()))
+            }
         } else if next.is_ascii_alphabetic() {
             // when next char is ascii alphabet: read consecutive alphabets, numbers and underscore
             // as a identifier

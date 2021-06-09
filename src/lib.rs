@@ -31,7 +31,6 @@ mod tests {
     use crate::interpreter::run;
     use crate::lexer::tokenize;
     use crate::parser::parse;
-    use maplit::hashmap;
 
     #[test]
     fn fib() {
@@ -52,15 +51,8 @@ end
         let tokens = tokenize(source);
         let ast = parse(&tokens).expect("it should parse");
         let state = run(&ast).expect("it should run");
-        assert_eq! {
-            state.variables(),
-            &hashmap! {
-                "a_0".to_string() => 6765,
-                "a_1".to_string() => 10946,
-                "i".to_string() => 20,
-                "tmp".to_string() => 10946,
-            }
-        };
+        assert_eq!(state.variables()["a_0"].unwrap_int(), 6765);
+        assert_eq!(state.variables()["i"].unwrap_int(), 20);
     }
 
     #[test]
@@ -76,7 +68,7 @@ end
         let tokens = tokenize(source);
         let ast = parse(&tokens).expect("it should parse");
         let state = run(&ast).expect("it should run");
-        assert!((10..=20).contains(&state.variables()["dice"]));
+        assert!((10..=20).contains(&state.variables()["dice"].unwrap_int()));
     }
 
     #[test]
@@ -100,7 +92,7 @@ end
         let tokens = tokenize(source);
         let ast = parse(&tokens).expect("it should parse");
         let state = run(&ast).expect("it should run");
-        assert_eq!(state.variables()["x"], 75025);
+        assert_eq!(state.variables()["x"].unwrap_int(), 75025);
     }
 
     #[test]
@@ -109,6 +101,6 @@ end
         let tokens = tokenize(source);
         let ast = parse(&tokens).expect("it should parse");
         let state = run(&ast).expect("it should run");
-        assert_eq!(state.variables()["x"], 0);
+        assert_eq!(state.variables()["x"].unwrap_int(), 0);
     }
 }

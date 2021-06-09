@@ -418,13 +418,9 @@ pub enum AstArithOp {
 }
 
 #[derive(Debug)]
-pub struct AstConst(pub i32);
-
-impl AstConst {
-    pub fn value(&self) -> i32 {
-        let AstConst(value) = *self;
-        value
-    }
+pub enum AstConst {
+    Int(i32),
+    Float(f64),
 }
 
 #[derive(Debug)]
@@ -695,7 +691,10 @@ impl fmt::Display for AstArithOp {
 
 impl fmt::Display for AstConst {
     fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        write!(b, "Const({})", self.value())
+        match self {
+            AstConst::Int(int) => write!(b, "Const({})", int),
+            AstConst::Float(float) => write!(b, "Float({})", float),
+        }
     }
 }
 
