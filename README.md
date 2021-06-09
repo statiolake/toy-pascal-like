@@ -16,7 +16,10 @@ Currently the syntax follows the following BNF:
 <dump-stmt> ::= dump <var>
 <bool-expr> ::= <arith-expr><compare-op><arith-expr>
 <compare-op> ::= < | > | <= | >= | == | !=
-<arith-expr> ::= <var> | <const> | <fncall> | (<arith-expr><arith-op><arith-expr>)
+<arith-expr> ::= <mul-expr> | <arith-expr> + <mul-expr> | <arith-expr> - <mul-expr>
+<mul-expr> ::= <unary-expr> | <mul-expr> * <unary-expr> | <mul-expr> / <unary-expr>
+<unary-expr> ::= <primary-expr> | - <unary-expr>
+<primary-expr> ::= <var> | <const> | <fncall> | (<arith-expr>)
 <fncall> ::= <ident>(<argument-list>)
 <argument-list> ::= ϵ | <arith-expr> | <arith-expr>, <argument-list>
 <arith-op> ::= + | - | * | /

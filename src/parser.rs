@@ -371,23 +371,97 @@ impl<'i, 'toks> Parser<'i, 'toks> {
     }
 
     fn parse_arith_expr(&mut self) -> Result<'i, Ast<AstArithExpr>> {
+        let mul = self.parse_mul_expr()?;
+        self.parse_arith_expr_impl(AstArithExpr::from_mul(mul))
+    }
+
+    fn parse_arith_expr_impl(&mut self, lhs: Ast<AstArithExpr>) -> Result<'i, Ast<AstArithExpr>> {
+        match self.lookahead(0).map(|t| t.kind).ok() {
+            Some(TokenKind::Add) => {
+                let start = lhs.span.start;
+                self.eat(TokenKind::Add)?;
+                let rhs = self.parse_mul_expr()?;
+                let end = rhs.span.end;
+                self.parse_arith_expr_impl(AstArithExpr::add_from_elements(
+                    Span::new(start, end),
+                    lhs,
+                    rhs,
+                ))
+            }
+            Some(TokenKind::Sub) => {
+                let start = lhs.span.start;
+                self.eat(TokenKind::Sub)?;
+                let rhs = self.parse_mul_expr()?;
+                let end = rhs.span.end;
+                self.parse_arith_expr_impl(AstArithExpr::sub_from_elements(
+                    Span::new(start, end),
+                    lhs,
+                    rhs,
+                ))
+            }
+            _ => Ok(lhs),
+        }
+    }
+
+    fn parse_mul_expr(&mut self) -> Result<'i, Ast<AstMulExpr>> {
+        let unary = self.parse_unary_expr()?;
+        self.parse_mul_expr_impl(AstMulExpr::from_unary(unary))
+    }
+
+    fn parse_mul_expr_impl(&mut self, lhs: Ast<AstMulExpr>) -> Result<'i, Ast<AstMulExpr>> {
+        match self.lookahead(0).map(|t| t.kind).ok() {
+            Some(TokenKind::Mul) => {
+                let start = lhs.span.start;
+                self.eat(TokenKind::Mul)?;
+                let rhs = self.parse_unary_expr()?;
+                let end = rhs.span.end;
+                self.parse_mul_expr_impl(AstMulExpr::mul_from_elements(
+                    Span::new(start, end),
+                    lhs,
+                    rhs,
+                ))
+            }
+            Some(TokenKind::Div) => {
+                let start = lhs.span.start;
+                self.eat(TokenKind::Div)?;
+                let rhs = self.parse_unary_expr()?;
+                let end = rhs.span.end;
+                self.parse_mul_expr_impl(AstMulExpr::div_from_elements(
+                    Span::new(start, end),
+                    lhs,
+                    rhs,
+                ))
+            }
+            _ => Ok(lhs),
+        }
+    }
+
+    fn parse_unary_expr(&mut self) -> Result<'i, Ast<AstUnaryExpr>> {
+        match self.lookahead(0)?.kind {
+            TokenKind::Sub => {
+                let start = self.eat(TokenKind::Sub)?.span.start;
+                let unary = self.parse_unary_expr()?;
+                let end = unary.span.end;
+                Ok(AstUnaryExpr::neg_from(Span::new(start, end), unary))
+            }
+            _ => self.parse_primary_expr().map(AstUnaryExpr::from_primary),
+        }
+    }
+
+    fn parse_primary_expr(&mut self) -> Result<'i, Ast<AstPrimaryExpr>> {
         match self.lookahead(0).map(|t| (t, t.kind))? {
             (_, TokenKind::OpenPar) => {
                 let start = self.eat(TokenKind::OpenPar)?.span.start;
-                let lhs = self.parse_arith_expr()?;
-                let op = self.parse_arith_op()?;
-                let rhs = self.parse_arith_expr()?;
+                let expr = self.parse_arith_expr()?;
                 let end = self.eat(TokenKind::ClosePar)?.span.end;
-                Ok(AstArithExpr::from_op_elements(
+                Ok(AstPrimaryExpr::paren_from_elements(
                     Span::new(start, end),
-                    lhs,
-                    op,
-                    rhs,
+                    expr,
                 ))
             }
             (_, TokenKind::Number(_)) => {
                 let value = self.parse_const()?;
-                Ok(AstArithExpr::from_const(value))
+                Ok(AstPrimaryExpr::from_const(value))
             }
             (_, TokenKind::Ident(_)) => {
                 // peek next identifiers to determine whether it's fncall or variable, look one
@@ -395,10 +469,10 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                 if self.lookahead(1).map(|t| t.kind).ok() == Some(TokenKind::OpenPar) {
                     // fncall
                     let fncall = self.parse_fncall()?;
-                    Ok(AstArithExpr::from_fncall(fncall))
+                    Ok(AstPrimaryExpr::from_fncall(fncall))
                 } else {
                     let var = self.parse_var()?;
-                    Ok(AstArithExpr::from_var(var))
+                    Ok(AstPrimaryExpr::from_var(var))
                 }
             }
             (token, _) => Err(ParserError::unexpected_token(
@@ -452,36 +526,6 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                     next,
                 ))
             }
-        }
-    }
-
-    fn parse_arith_op(&mut self) -> Result<'i, Ast<AstArithOp>> {
-        match self.next_token().map(|t| (t, t.kind))? {
-            (tok, TokenKind::Add) => Ok(Ast {
-                ast: AstArithOp::Add,
-                span: tok.span,
-            }),
-            (tok, TokenKind::Sub) => Ok(Ast {
-                ast: AstArithOp::Sub,
-                span: tok.span,
-            }),
-            (tok, TokenKind::Mul) => Ok(Ast {
-                ast: AstArithOp::Mul,
-                span: tok.span,
-            }),
-            (tok, TokenKind::Div) => Ok(Ast {
-                ast: AstArithOp::Div,
-                span: tok.span,
-            }),
-            (tok, _) => Err(ParserError::unexpected_token(
-                tok,
-                Some(vec![
-                    TokenKind::Add,
-                    TokenKind::Sub,
-                    TokenKind::Mul,
-                    TokenKind::Div,
-                ]),
-            )),
         }
     }
 

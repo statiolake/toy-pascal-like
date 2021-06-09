@@ -102,4 +102,13 @@ end
         let state = run(&ast).expect("it should run");
         assert_eq!(state.variables()["x"], 75025);
     }
+
+    #[test]
+    fn natural_arith() {
+        let source = r#"x := (1 + 2) * 3 - (4 + 5) + (-6 * (7 + 8)) / -9 + -10"#;
+        let tokens = tokenize(source);
+        let ast = parse(&tokens).expect("it should parse");
+        let state = run(&ast).expect("it should run");
+        assert_eq!(state.variables()["x"], 0);
+    }
 }

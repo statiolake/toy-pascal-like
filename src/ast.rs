@@ -249,33 +249,105 @@ pub enum AstCompareOp {
 
 #[derive(Debug)]
 pub enum AstArithExpr {
+    MulExpr(Box<Ast<AstMulExpr>>),
+    Add(Box<Ast<AstArithExpr>>, Box<Ast<AstMulExpr>>),
+    Sub(Box<Ast<AstArithExpr>>, Box<Ast<AstMulExpr>>),
+}
+
+derive_from_for_tuple_like!(AstMulExpr => AstArithExpr::MulExpr, from_mul);
+
+impl AstArithExpr {
+    pub fn add_from_elements(
+        span: Span,
+        lhs: Ast<AstArithExpr>,
+        rhs: Ast<AstMulExpr>,
+    ) -> Ast<AstArithExpr> {
+        Ast {
+            span,
+            ast: AstArithExpr::Add(Box::new(lhs), Box::new(rhs)),
+        }
+    }
+
+    pub fn sub_from_elements(
+        span: Span,
+        lhs: Ast<AstArithExpr>,
+        rhs: Ast<AstMulExpr>,
+    ) -> Ast<AstArithExpr> {
+        Ast {
+            span,
+            ast: AstArithExpr::Sub(Box::new(lhs), Box::new(rhs)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum AstMulExpr {
+    UnaryExpr(Box<Ast<AstUnaryExpr>>),
+    Mul(Box<Ast<AstMulExpr>>, Box<Ast<AstUnaryExpr>>),
+    Div(Box<Ast<AstMulExpr>>, Box<Ast<AstUnaryExpr>>),
+}
+
+derive_from_for_tuple_like!(AstUnaryExpr => AstMulExpr::UnaryExpr, from_unary);
+
+impl AstMulExpr {
+    pub fn mul_from_elements(
+        span: Span,
+        lhs: Ast<AstMulExpr>,
+        rhs: Ast<AstUnaryExpr>,
+    ) -> Ast<AstMulExpr> {
+        Ast {
+            span,
+            ast: AstMulExpr::Mul(Box::new(lhs), Box::new(rhs)),
+        }
+    }
+
+    pub fn div_from_elements(
+        span: Span,
+        lhs: Ast<AstMulExpr>,
+        rhs: Ast<AstUnaryExpr>,
+    ) -> Ast<AstMulExpr> {
+        Ast {
+            span,
+            ast: AstMulExpr::Div(Box::new(lhs), Box::new(rhs)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum AstUnaryExpr {
+    PrimaryExpr(Box<Ast<AstPrimaryExpr>>),
+    Neg(Box<Ast<AstUnaryExpr>>),
+}
+
+derive_from_for_tuple_like!(AstPrimaryExpr => AstUnaryExpr::PrimaryExpr, from_primary);
+
+impl AstUnaryExpr {
+    pub fn neg_from(span: Span, expr: Ast<AstUnaryExpr>) -> Ast<AstUnaryExpr> {
+        Ast {
+            span,
+            ast: AstUnaryExpr::Neg(Box::new(expr)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum AstPrimaryExpr {
     Var(Box<Ast<AstVar>>),
     Const(Box<Ast<AstConst>>),
     FnCall(Box<Ast<AstFnCall>>),
-    Op {
-        lhs: Box<Ast<AstArithExpr>>,
-        op: Box<Ast<AstArithOp>>,
-        rhs: Box<Ast<AstArithExpr>>,
-    },
+    Paren(Box<Ast<AstArithExpr>>),
 }
 
-derive_from_for_tuple_like!(AstVar => AstArithExpr::Var, from_var);
-derive_from_for_tuple_like!(AstConst => AstArithExpr::Const, from_const);
-derive_from_for_tuple_like!(AstFnCall => AstArithExpr::FnCall, from_fncall);
+derive_from_for_tuple_like!(AstVar => AstPrimaryExpr::Var, from_var);
+derive_from_for_tuple_like!(AstConst => AstPrimaryExpr::Const, from_const);
+derive_from_for_tuple_like!(AstFnCall => AstPrimaryExpr::FnCall, from_fncall);
 
-impl AstArithExpr {
-    pub fn from_op_elements(
-        span: Span,
-        lhs: Ast<AstArithExpr>,
-        op: Ast<AstArithOp>,
-        rhs: Ast<AstArithExpr>,
-    ) -> Ast<AstArithExpr> {
-        let ast = AstArithExpr::Op {
-            lhs: Box::new(lhs),
-            op: Box::new(op),
-            rhs: Box::new(rhs),
-        };
-        Ast { span, ast }
+impl AstPrimaryExpr {
+    pub fn paren_from_elements(span: Span, expr: Ast<AstArithExpr>) -> Ast<AstPrimaryExpr> {
+        Ast {
+            span,
+            ast: AstPrimaryExpr::Paren(Box::new(expr)),
+        }
     }
 }
 
@@ -514,16 +586,66 @@ impl fmt::Display for AstArithExpr {
     fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
         writeln!(b, "ArithExpr")?;
         match self {
-            AstArithExpr::Var(var) => writeln!(b, "  {}", var)?,
-            AstArithExpr::Const(value) => writeln!(b, "  {}", value)?,
-            AstArithExpr::FnCall(fncall) => writeln!(b, "{}", indent(&fncall, 4))?,
-            AstArithExpr::Op { lhs, op, rhs } => {
+            AstArithExpr::MulExpr(expr) => writeln!(b, "{}", indent(&expr, 4))?,
+            AstArithExpr::Add(lhs, rhs) => {
                 writeln!(b, "  lhs:")?;
                 writeln!(b, "{}", indent(&lhs, 4))?;
-                writeln!(b, "  op: {}", op)?;
                 writeln!(b, "  rhs:")?;
                 writeln!(b, "{}", indent(&rhs, 4))?;
             }
+            AstArithExpr::Sub(lhs, rhs) => {
+                writeln!(b, "  lhs:")?;
+                writeln!(b, "{}", indent(&lhs, 4))?;
+                writeln!(b, "  rhs:")?;
+                writeln!(b, "{}", indent(&rhs, 4))?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for AstMulExpr {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(b, "MulExpr")?;
+        match self {
+            AstMulExpr::UnaryExpr(expr) => writeln!(b, "{}", indent(&expr, 4))?,
+            AstMulExpr::Mul(lhs, rhs) => {
+                writeln!(b, "  lhs:")?;
+                writeln!(b, "{}", indent(&lhs, 4))?;
+                writeln!(b, "  rhs:")?;
+                writeln!(b, "{}", indent(&rhs, 4))?;
+            }
+            AstMulExpr::Div(lhs, rhs) => {
+                writeln!(b, "  lhs:")?;
+                writeln!(b, "{}", indent(&lhs, 4))?;
+                writeln!(b, "  rhs:")?;
+                writeln!(b, "{}", indent(&rhs, 4))?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for AstUnaryExpr {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(b, "UnaryExpr")?;
+        match self {
+            AstUnaryExpr::PrimaryExpr(expr) => writeln!(b, "{}", indent(&expr, 4)),
+            AstUnaryExpr::Neg(expr) => writeln!(b, "{}", indent(&expr, 4)),
+        }
+    }
+}
+
+impl fmt::Display for AstPrimaryExpr {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(b, "PrimaryExpr")?;
+        match self {
+            AstPrimaryExpr::Var(var) => writeln!(b, "    {}", var)?,
+            AstPrimaryExpr::Const(value) => writeln!(b, "    {}", value)?,
+            AstPrimaryExpr::FnCall(fncall) => writeln!(b, "{}", indent(&fncall, 4))?,
+            AstPrimaryExpr::Paren(expr) => writeln!(b, "{}", indent(&expr, 4))?,
         }
 
         Ok(())

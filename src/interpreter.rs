@@ -330,19 +330,37 @@ impl<'a> State<'a> {
 
     fn eval_arith_expr(&mut self, expr: &'a Ast<AstArithExpr>) -> Result<i32> {
         match &expr.ast {
-            AstArithExpr::Var(var) => self.get_var(expr.span, var.ast.ident()),
-            AstArithExpr::Const(value) => Ok(value.ast.value()),
-            AstArithExpr::FnCall(fncall) => self.eval_fncall(fncall),
-            AstArithExpr::Op { lhs, op, rhs } => {
-                let lhs = self.eval_arith_expr(lhs)?;
-                let rhs = self.eval_arith_expr(rhs)?;
-                match &op.ast {
-                    AstArithOp::Add => Ok(lhs + rhs),
-                    AstArithOp::Sub => Ok(lhs - rhs),
-                    AstArithOp::Mul => Ok(lhs * rhs),
-                    AstArithOp::Div => Ok(lhs / rhs),
-                }
+            AstArithExpr::MulExpr(expr) => self.eval_mul_expr(&expr),
+            AstArithExpr::Add(lhs, rhs) => {
+                Ok(self.eval_arith_expr(&lhs)? + self.eval_mul_expr(&rhs)?)
             }
+            AstArithExpr::Sub(lhs, rhs) => {
+                Ok(self.eval_arith_expr(&lhs)? - self.eval_mul_expr(&rhs)?)
+            }
+        }
+    }
+
+    fn eval_mul_expr(&mut self, expr: &'a Ast<AstMulExpr>) -> Result<i32> {
+        match &expr.ast {
+            AstMulExpr::UnaryExpr(expr) => self.eval_unary_expr(expr),
+            AstMulExpr::Mul(lhs, rhs) => Ok(self.eval_mul_expr(lhs)? * self.eval_unary_expr(rhs)?),
+            AstMulExpr::Div(lhs, rhs) => Ok(self.eval_mul_expr(lhs)? / self.eval_unary_expr(rhs)?),
+        }
+    }
+
+    fn eval_unary_expr(&mut self, expr: &'a Ast<AstUnaryExpr>) -> Result<i32> {
+        match &expr.ast {
+            AstUnaryExpr::PrimaryExpr(expr) => self.eval_primary_expr(expr),
+            AstUnaryExpr::Neg(expr) => self.eval_unary_expr(expr).map(|x| -x),
+        }
+    }
+
+    fn eval_primary_expr(&mut self, expr: &'a Ast<AstPrimaryExpr>) -> Result<i32> {
+        match &expr.ast {
+            AstPrimaryExpr::Var(var) => self.get_var(expr.span, var.ast.ident()),
+            AstPrimaryExpr::Const(value) => Ok(value.ast.value()),
+            AstPrimaryExpr::FnCall(fncall) => self.eval_fncall(fncall),
+            AstPrimaryExpr::Paren(expr) => self.eval_arith_expr(expr),
         }
     }
 
