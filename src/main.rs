@@ -57,7 +57,7 @@ macro_rules! eprintln {
     };
 }
 
-fn show_span(filename: &str, source: &str, span: Span, summary: String) {
+fn show_span(filename: &str, source: &str, span: Span, summary: &str) {
     let lines = source.lines().enumerate().collect_vec();
     let line_number_width = source.len().to_string().len() + 1;
     let line_number_indent = " ".repeat(line_number_width);
@@ -104,14 +104,22 @@ fn print_parser_error(filename: &str, source: &str, err: &ParserError) {
     eprint!(&*COLOR_ERROR => "error:");
     eprint!(" ");
     eprintln!(&*COLOR_MESSAGE => "{}", err.kind);
-    show_span(filename, source, err.span, err.kind.summary());
+    show_span(filename, source, err.span, &err.kind.summary());
+    for hint in &err.hints {
+        eprint!(&*COLOR_INFO => "hint:");
+        eprint!(" ");
+        eprintln!("{}", hint.message);
+        if let Some((span, summary)) = &hint.span {
+            show_span(filename, source, *span, summary);
+        }
+    }
 }
 
 fn print_interpreter_error(filename: &str, source: &str, err: &InterpreterError) {
     eprint!(&*COLOR_ERROR => "runtime error:");
     eprint!(" ");
     eprintln!(&*COLOR_MESSAGE => "{}", err.kind);
-    show_span(filename, source, err.span, err.kind.summary());
+    show_span(filename, source, err.span, &err.kind.summary());
 
     for hint in &err.kind.hints() {
         eprint!(&*COLOR_INFO => "hint:");

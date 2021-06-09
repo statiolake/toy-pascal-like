@@ -2,11 +2,18 @@ use crate::ast::*;
 use crate::lexer::{LineColumn, Span, Token, TokenKind};
 use itertools::Itertools as _;
 
+#[derive(Debug)]
+pub struct Hint {
+    pub message: String,
+    pub span: Option<(Span, String)>,
+}
+
 #[derive(thiserror::Error, Debug)]
 #[error("{span}: {kind}")]
 pub struct ParserError<'i> {
     pub span: Span,
     pub kind: ParserErrorKind<'i>,
+    pub hints: Vec<Hint>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -42,6 +49,7 @@ impl<'i> ParserError<'i> {
                 token_kind: token.kind,
                 expects,
             },
+            hints: vec![],
         }
     }
 
@@ -49,6 +57,7 @@ impl<'i> ParserError<'i> {
         Self {
             span,
             kind: ParserErrorKind::UnexpectedEof { expects },
+            hints: vec![],
         }
     }
 
@@ -56,6 +65,7 @@ impl<'i> ParserError<'i> {
         Self {
             span,
             kind: ParserErrorKind::NotEntirelyConsumed,
+            hints: vec![],
         }
     }
 }
@@ -260,8 +270,21 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         let start = stmt.span.start;
         let token = self.lookahead(0)?;
         let (next, end) = if token.kind == TokenKind::Semicolon {
-            self.eat(TokenKind::Semicolon)?;
-            let rest = self.parse_stmt_list()?;
+            let semi_span = self.eat(TokenKind::Semicolon)?.span;
+            // peek the next token for a trailing semicolon hint
+            let next_is_end = self.lookahead(0).map(|t| t.kind).ok() == Some(TokenKind::End);
+            let rest = match self.parse_stmt_list() {
+                Ok(rest) => rest,
+                Err(mut err) => {
+                    if next_is_end {
+                        err.hints.push(Hint {
+                            span: Some((semi_span, "trailing ; is not allowed".to_string())),
+                            message: "perhaps removing this semicolon may help".to_string(),
+                        });
+                    }
+                    return Err(err);
+                }
+            };
             let end = rest.span.end;
             (Some(rest), end)
         } else {
