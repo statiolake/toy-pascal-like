@@ -1,5 +1,6 @@
 use crate::ast::*;
 use crate::lexer::Span;
+use dyn_clone::DynClone;
 use rand::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -80,22 +81,34 @@ pub fn run(stmt: &Ast<AstStmt>) -> Result<State> {
     Ok(state)
 }
 
+trait FunctionBody<'a>: Fn(&State<'a>, Span, &[i32]) -> Result<i32> + DynClone + 'a {}
+impl Clone for Box<dyn FunctionBody<'_>> {
+    fn clone(&self) -> Self {
+        dyn_clone::clone_box(&**self)
+    }
+}
+
+impl<'a, F> FunctionBody<'a> for F
+where
+    F: Fn(&State<'a>, Span, &[i32]) -> Result<i32>,
+    F: DynClone,
+    F: 'a,
+{
+}
+
+#[derive(Clone)]
 struct Function<'a> {
     name: String,
     arity: usize,
-    body: Box<dyn Fn(Span, &[i32]) -> Result<i32> + 'a>,
+    body: Box<dyn FunctionBody<'a>>,
 }
 
 impl<'a> Function<'a> {
-    pub fn new(
-        name: String,
-        arity: usize,
-        body: Box<dyn Fn(Span, &[i32]) -> Result<i32> + 'a>,
-    ) -> Self {
+    pub fn new(name: String, arity: usize, body: Box<dyn FunctionBody<'a>>) -> Self {
         Self { name, arity, body }
     }
 
-    pub fn call(&self, span: Span, args: &[i32]) -> Result<i32> {
+    pub fn call(&self, state: &State<'a>, span: Span, args: &[i32]) -> Result<i32> {
         if self.arity != args.len() {
             Err(InterpreterError {
                 span,
@@ -106,11 +119,12 @@ impl<'a> Function<'a> {
                 },
             })
         } else {
-            (self.body)(span, args)
+            (self.body)(state, span, args)
         }
     }
 }
 
+#[derive(Clone)]
 pub struct State<'a> {
     vars: HashMap<String, i32>,
     funcs: HashMap<String, Function<'a>>,
@@ -140,7 +154,7 @@ impl<'a> State<'a> {
         let random_int = Function::new(
             "RandomInt".to_string(),
             2,
-            Box::new(|_, args| {
+            Box::new(|_, _, args| {
                 let low = args[0];
                 let high = args[1];
                 Ok(thread_rng().gen_range(low..=high))
@@ -153,7 +167,7 @@ impl<'a> State<'a> {
         let read_int = Function::new(
             "ReadInt".to_string(),
             0,
-            Box::new(|_, _| {
+            Box::new(|_, _, _| {
                 let mut line = String::new();
                 io::stdin().read_line(&mut line).unwrap();
                 Ok(line.trim().parse::<i32>().expect("failed to parse stdin"))
@@ -215,7 +229,6 @@ impl<'a> State<'a> {
             params.push(ident);
             curr = &next.ast;
         }
-        let body = &stmt.ast.body;
 
         // ensure that there is no same name params
         let mut used = HashSet::new();
@@ -233,13 +246,13 @@ impl<'a> State<'a> {
         let func = Function::new(
             name.to_string(),
             params.len(),
-            Box::new(move |span, args| {
-                let mut local_state = State::defaultenv();
+            Box::new(move |state, span, args| {
+                let mut inner_state = state.clone();
                 for (idx, param) in params.iter().enumerate() {
-                    local_state.assign_to_var(span, param.ast.ident(), args[idx])?;
+                    inner_state.assign_to_var(span, param.ast.ident(), args[idx])?;
                 }
-                local_state.run_begin_stmt(&*body)?;
-                local_state
+                inner_state.run_begin_stmt(&stmt.ast.body)?;
+                inner_state
                     .get_var(stmt.span, name)
                     .map_err(|_| InterpreterError {
                         span: stmt.span,
@@ -349,6 +362,6 @@ impl<'a> State<'a> {
             },
         })?;
 
-        fnptr.call(fncall.span, &args)
+        fnptr.call(self, fncall.span, &args)
     }
 }
