@@ -103,4 +103,24 @@ end
         let state = run(&ast).expect("it should run");
         assert_eq!(state.variables()["x"].unwrap_int(), 0);
     }
+
+    #[test]
+    fn float_arith() {
+        let source = r#"
+begin
+    x := 1.0;
+    i := 0;
+    sum := 0.0;
+    while i < 100 do begin
+        sum := sum + x;
+        x := x / 2.0;
+        i := i + 1
+    end
+end
+"#;
+        let tokens = tokenize(source);
+        let ast = parse(&tokens).expect("it should parse");
+        let state = run(&ast).expect("it should run");
+        assert!((state.variables()["sum"].unwrap_float() - 2.0).abs() < 1e-8);
+    }
 }
