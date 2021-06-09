@@ -264,7 +264,10 @@ impl<'i, 'toks> Parser<'i, 'toks> {
             Ok(token) => token.span.end,
             Err(mut err) => {
                 err.hints.push(Hint {
-                    span: Some((list.span, "try adding semicolon after this".to_string())),
+                    span: Some((
+                        list.ast.last_stmt().span,
+                        "try adding semicolon after this".to_string(),
+                    )),
                     message: "parhaps you missed a semicolon".to_string(),
                 });
                 return Err(err);

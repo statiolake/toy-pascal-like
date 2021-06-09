@@ -178,6 +178,14 @@ impl AstStmtList {
 
         Ast { span, ast }
     }
+
+    pub fn last_stmt(&self) -> &Ast<AstStmt> {
+        let mut curr = self;
+        while let Some(list) = &curr.next {
+            curr = &list.ast;
+        }
+        &curr.stmt
+    }
 }
 
 #[derive(Debug)]
