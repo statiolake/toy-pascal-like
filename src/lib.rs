@@ -85,14 +85,14 @@ begin
         end
     end;
 
-    x := Fib(25);
+    x := Fib(10);
     dump x
 end
 "#;
         let tokens = tokenize(source);
         let ast = parse(&tokens).expect("it should parse");
         let state = run(&ast).expect("it should run");
-        assert_eq!(state.variables()["x"].unwrap_int(), 75025);
+        assert_eq!(state.variables()["x"].unwrap_int(), 55);
     }
 
     #[test]
