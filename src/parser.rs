@@ -5,8 +5,8 @@ use itertools::Itertools as _;
 #[derive(thiserror::Error, Debug)]
 #[error("{span}: {kind}")]
 pub struct ParserError<'i> {
-    span: Span,
-    kind: ParserErrorKind<'i>,
+    pub span: Span,
+    pub kind: ParserErrorKind<'i>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -18,6 +18,17 @@ pub enum ParserErrorKind<'i> {
     },
     #[error("unexpected EOF{}", format_expects(&.expects))]
     UnexpectedEof { expects: Option<Vec<TokenKind<'i>>> },
+}
+
+impl ParserErrorKind<'_> {
+    pub fn summary(&self) -> String {
+        match self {
+            ParserErrorKind::UnexpectedToken { token_kind, .. } => {
+                format!("unexpected {}", token_kind)
+            }
+            ParserErrorKind::UnexpectedEof { .. } => "unexpected eof".to_string(),
+        }
+    }
 }
 
 impl<'i> ParserError<'i> {
