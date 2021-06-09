@@ -46,6 +46,9 @@ macro_rules! eprint {
 }
 
 macro_rules! eprintln {
+    () => {
+        eprintln!(&ColorSpec::new() => "");
+    };
     ($fg:expr => $fmt:literal $($args:tt)*) => {
         print_with_color(format_args!(concat!($fmt, "\n") $($args)*), $fg);
     };
@@ -69,15 +72,32 @@ fn show_span(filename: &str, source: &str, span: Span, summary: String) {
         eprint!(&*COLOR_INFO => "{:>width$} |", number + 1, width=line_number_width);
         eprintln!(" {}", line);
         if (start.line..=end.line).contains(&number) {
+            let start_column = if start.line == *number {
+                start.column
+            } else {
+                0
+            };
+            let end_column = if end.line == *number {
+                end.column
+            } else {
+                line.len()
+            };
+
             eprint!(&*COLOR_INFO => "{} |", line_number_indent);
-            eprint!(" {}", " ".repeat(start.column));
-            eprintln!(
-                &*COLOR_ERROR => "{} {}",
-                "^".repeat(end.column - start.column),
-                summary
+            eprint!(" {}", " ".repeat(start_column));
+            eprint!(
+                &*COLOR_ERROR => "{}",
+                "^".repeat(end_column - start_column),
             );
+
+            if end.line == *number {
+                eprint!(&*COLOR_ERROR => " {}", summary);
+            }
+
+            eprintln!();
         }
     }
+    eprintln!(&*COLOR_INFO => "{} |", line_number_indent);
 }
 
 fn print_parser_error(filename: &str, source: &str, err: &ParserError) {
@@ -92,6 +112,12 @@ fn print_interpreter_error(filename: &str, source: &str, err: &InterpreterError)
     eprint!(" ");
     eprintln!(&*COLOR_MESSAGE => "{}", err.kind);
     show_span(filename, source, err.span, err.kind.summary());
+
+    for hint in &err.kind.hints() {
+        eprint!(&*COLOR_INFO => "hint:");
+        eprint!(" ");
+        eprintln!("{}", hint);
+    }
 }
 
 fn main() {

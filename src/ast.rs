@@ -23,6 +23,7 @@ macro_rules! derive_from_for_tuple_like {
 
 #[derive(Debug)]
 pub enum AstStmt {
+    FuncdefStmt(Box<Ast<AstFuncdefStmt>>),
     IfStmt(Box<Ast<AstIfStmt>>),
     WhileStmt(Box<Ast<AstWhileStmt>>),
     BeginStmt(Box<Ast<AstBeginStmt>>),
@@ -30,11 +31,76 @@ pub enum AstStmt {
     DumpStmt(Box<Ast<AstDumpStmt>>),
 }
 
+derive_from_for_tuple_like!(AstFuncdefStmt => AstStmt::FuncdefStmt, from_funcdef_stmt);
 derive_from_for_tuple_like!(AstIfStmt => AstStmt::IfStmt, from_if_stmt);
 derive_from_for_tuple_like!(AstWhileStmt => AstStmt::WhileStmt, from_while_stmt);
 derive_from_for_tuple_like!(AstBeginStmt => AstStmt::BeginStmt, from_begin_stmt);
 derive_from_for_tuple_like!(AstAssgStmt => AstStmt::AssgStmt, from_assg_stmt);
 derive_from_for_tuple_like!(AstDumpStmt => AstStmt::DumpStmt, from_dump_stmt);
+
+#[derive(Debug)]
+pub struct AstFuncdefStmt {
+    pub name: Box<Ast<AstIdent>>,
+    pub params: Box<Ast<AstParamList>>,
+    pub body: Box<Ast<AstBeginStmt>>,
+}
+
+#[derive(Debug)]
+pub enum AstParamList {
+    Empty,
+    Nonempty {
+        ident: Box<Ast<AstIdent>>,
+        next: Box<Ast<AstParamList>>,
+    },
+}
+
+impl AstParamList {
+    pub fn empty(span: Span) -> Ast<AstParamList> {
+        Ast {
+            ast: AstParamList::Empty,
+            span,
+        }
+    }
+
+    pub fn from_elements(
+        span: Span,
+        ident: Ast<AstIdent>,
+        next: Ast<AstParamList>,
+    ) -> Ast<AstParamList> {
+        let ast = AstParamList::Nonempty {
+            ident: Box::new(ident),
+            next: Box::new(next),
+        };
+        Ast { span, ast }
+    }
+}
+
+impl fmt::Display for AstParamList {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        if let AstParamList::Nonempty { ident: expr, next } = self {
+            writeln!(b, "{}", expr)?;
+            writeln!(b, "{}", next)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl AstFuncdefStmt {
+    pub fn from_elements(
+        span: Span,
+        name: Ast<AstIdent>,
+        params: Ast<AstParamList>,
+        body: Ast<AstBeginStmt>,
+    ) -> Ast<AstFuncdefStmt> {
+        let ast = AstFuncdefStmt {
+            name: Box::new(name),
+            params: Box::new(params),
+            body: Box::new(body),
+        };
+        Ast { span, ast }
+    }
+}
 
 #[derive(Debug)]
 pub struct AstIfStmt {
@@ -85,8 +151,7 @@ pub struct AstBeginStmt {
 }
 
 impl AstBeginStmt {
-    pub fn from_list(list: Ast<AstStmtList>) -> Ast<AstBeginStmt> {
-        let span = list.span;
+    pub fn from_list(span: Span, list: Ast<AstStmtList>) -> Ast<AstBeginStmt> {
         let ast = AstBeginStmt {
             list: Box::new(list),
         };
@@ -325,6 +390,7 @@ impl<A: fmt::Display> fmt::Display for Ast<A> {
 impl fmt::Display for AstStmt {
     fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
         let child = match self {
+            AstStmt::FuncdefStmt(stmt) => stmt.to_string(),
             AstStmt::IfStmt(stmt) => stmt.to_string(),
             AstStmt::WhileStmt(stmt) => stmt.to_string(),
             AstStmt::BeginStmt(stmt) => stmt.to_string(),
@@ -334,6 +400,19 @@ impl fmt::Display for AstStmt {
 
         writeln!(b, "Stmt")?;
         writeln!(b, "{}", indent(&child, 4))?;
+        Ok(())
+    }
+}
+
+impl fmt::Display for AstFuncdefStmt {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(b, "FuncdefStmt")?;
+        writeln!(b, "  name: {}", self.name)?;
+        writeln!(b, "  args:")?;
+        writeln!(b, "{}", indent(&self.params, 4))?;
+        writeln!(b, "  body:")?;
+        writeln!(b, "{}", indent(&self.body, 4))?;
+
         Ok(())
     }
 }

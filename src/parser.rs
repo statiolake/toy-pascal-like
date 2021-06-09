@@ -117,6 +117,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
 impl<'i, 'toks> Parser<'i, 'toks> {
     pub fn parse_stmt(&mut self) -> Result<'i, Ast<AstStmt>> {
         match self.lookahead(0).map(|t| (t, t.kind))? {
+            (_, TokenKind::Function) => Ok(AstStmt::from_funcdef_stmt(self.parse_funcdef_stmt()?)),
             (_, TokenKind::If) => Ok(AstStmt::from_if_stmt(self.parse_if_stmt()?)),
             (_, TokenKind::While) => Ok(AstStmt::from_while_stmt(self.parse_while_stmt()?)),
             (_, TokenKind::Begin) => Ok(AstStmt::from_begin_stmt(self.parse_begin_stmt()?)),
@@ -133,6 +134,57 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                     TokenKind::Ident(""),
                 ]),
             )),
+        }
+    }
+
+    fn parse_funcdef_stmt(&mut self) -> Result<'i, Ast<AstFuncdefStmt>> {
+        let start = self.eat(TokenKind::Function)?.span.start;
+        let name = self.parse_ident()?;
+        self.eat(TokenKind::OpenPar)?;
+        let params = self.parse_param_list()?;
+        self.eat(TokenKind::ClosePar)?;
+        self.eat(TokenKind::Semicolon)?;
+        let body = self.parse_begin_stmt()?;
+        let end = body.span.end;
+
+        Ok(AstFuncdefStmt::from_elements(
+            Span::new(start, end),
+            name,
+            params,
+            body,
+        ))
+    }
+
+    fn parse_param_list(&mut self) -> Result<'i, Ast<AstParamList>> {
+        match self.lookahead(0).map(|t| (t, t.kind))? {
+            (t, TokenKind::ClosePar) => Ok(Ast {
+                ast: AstParamList::Empty,
+                span: Span::new(t.span.start, t.span.start),
+            }),
+            _ => {
+                let ident = self.parse_ident()?;
+                let next = self.lookahead(0);
+                let next = if next.as_ref().map(|t| t.kind).ok() == Some(TokenKind::Comma) {
+                    self.eat(TokenKind::Comma)?;
+                    self.parse_param_list()?
+                } else {
+                    let span = next
+                        .map(|t| Span::new(t.span.start, t.span.start))
+                        .unwrap_or_else(|_| self.span_eof());
+                    Ast {
+                        ast: AstParamList::Empty,
+                        span,
+                    }
+                };
+                let start = ident.span.start;
+                let end = next.span.end;
+
+                Ok(AstParamList::from_elements(
+                    Span::new(start, end),
+                    ident,
+                    next,
+                ))
+            }
         }
     }
 
@@ -168,11 +220,11 @@ impl<'i, 'toks> Parser<'i, 'toks> {
     }
 
     fn parse_begin_stmt(&mut self) -> Result<'i, Ast<AstBeginStmt>> {
-        self.eat(TokenKind::Begin)?;
+        let start = self.eat(TokenKind::Begin)?.span.start;
         let list = self.parse_stmt_list()?;
-        self.eat(TokenKind::End)?;
+        let end = self.eat(TokenKind::End)?.span.end;
 
-        Ok(AstBeginStmt::from_list(list))
+        Ok(AstBeginStmt::from_list(Span::new(start, end), list))
     }
 
     fn parse_stmt_list(&mut self) -> Result<'i, Ast<AstStmtList>> {

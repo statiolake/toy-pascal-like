@@ -64,6 +64,7 @@ impl<'a> Token<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenKind<'a> {
+    Function,
     If,
     Then,
     Else,
@@ -95,6 +96,7 @@ pub enum TokenKind<'a> {
 impl fmt::Display for TokenKind<'_> {
     fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            TokenKind::Function => write!(b, "function"),
             TokenKind::If => write!(b, "if"),
             TokenKind::Then => write!(b, "then"),
             TokenKind::Else => write!(b, "else"),
@@ -128,6 +130,7 @@ impl fmt::Display for TokenKind<'_> {
 impl TokenKind<'_> {
     pub fn label(self) -> &'static str {
         match self {
+            TokenKind::Function => "function",
             TokenKind::If => "if",
             TokenKind::Then => "then",
             TokenKind::Else => "else",
@@ -241,6 +244,7 @@ impl<'a> Iterator for Splitter<'a> {
         }
 
         let map = vec![
+            ("function", TokenKind::Function),
             ("if", TokenKind::If),
             ("then", TokenKind::Then),
             ("else", TokenKind::Else),

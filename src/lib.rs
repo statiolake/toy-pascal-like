@@ -31,7 +31,6 @@ mod tests {
     use super::Result;
     use crate::ast::{Ast, AstStmt};
     use crate::interpreter::run;
-    use crate::interpreter::State;
     use crate::lexer::tokenize;
     use crate::parser::Parser;
     use maplit::hashmap;
@@ -39,11 +38,6 @@ mod tests {
     fn parse(source: &str) -> Result<Ast<AstStmt>> {
         let tokens = tokenize(source);
         Parser::new(&tokens).parse_stmt().map_err(Into::into)
-    }
-
-    fn run_source(source: &str) -> Result<State> {
-        let ast = parse(source).unwrap_or_else(|e| panic!("{}", e));
-        run(&ast).map_err(Into::into)
     }
 
     #[test]
@@ -62,7 +56,8 @@ begin
     end
 end
 "#;
-        let state = run_source(source).expect("it should run");
+        let ast = parse(source).expect("it should parse");
+        let state = run(&ast).expect("it should run");
         assert_eq! {
             state.variables(),
             &hashmap! {
@@ -84,7 +79,8 @@ begin
     dump dice
 end
 "#;
-        let state = run_source(source).expect("it shoudl run");
+        let ast = parse(source).expect("it should parse");
+        let state = run(&ast).expect("it should run");
         assert!((10..=20).contains(&state.variables()["dice"]));
     }
 }

@@ -5,11 +5,13 @@ An interpreter for toy language, somewhat similar to PASCAL.
 Currently the syntax follows the following BNF:
 
 ```bnf
-<stmt> ::= <if-stmt> | <while-stmt> | <begin-stmt> | <assg-stmt> | <dump-stmt>
+<stmt-list> ::= <stmt> | <stmt>; <stmt-list>
+<stmt> ::= <funcdef-stmt> | <if-stmt> | <while-stmt> | <begin-stmt> | <assg-stmt> | <dump-stmt>
+<funcdef-stmt> ::= function <ident>(<param-list>); <begin-stmt>
+<param-list> ::= ϵ | <ident> | <ident>, <param-list>
 <if-stmt> ::= if <bool-expr> then <stmt> else <stmt>
 <while-stmt> ::= while <bool-expr> do <stmt>
 <begin-stmt> ::= begin <stmt-list> end
-<stmt-list> ::= <stmt> | <stmt>; <stmt-list>
 <assg-stmt> ::= <var> := <arith-expr>
 <dump-stmt> ::= dump <var>
 <bool-expr> ::= <arith-expr><compare-op><arith-expr>
