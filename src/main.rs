@@ -2,13 +2,12 @@ use itertools::Itertools as _;
 use once_cell::sync::Lazy;
 use pascal_like::interpreter::run;
 use pascal_like::interpreter::InterpreterError;
-use pascal_like::lexer::tokenize;
+use pascal_like::lexer::{tokenize, Span};
 use pascal_like::parser::{Parser, ParserError};
 use std::cmp::min;
-use std::fmt;
 use std::io::prelude::*;
 use std::sync::Mutex;
-use std::{env, fs};
+use std::{env, fmt, fs};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 static STDERR: Lazy<Mutex<StandardStream>> =
@@ -55,44 +54,44 @@ macro_rules! eprintln {
     };
 }
 
-fn print_parser_error(filename: &str, source: &str, err: &ParserError) {
+fn show_span(filename: &str, source: &str, span: Span, summary: String) {
     let lines = source.lines().enumerate().collect_vec();
-    let start = err.span.start;
-    let end = err.span.end;
-    let window = &lines[start.line.saturating_sub(3)..min(lines.len(), end.line + 3)];
-
     let line_number_width = source.len().to_string().len() + 1;
     let line_number_indent = " ".repeat(line_number_width);
-
-    eprint!(&*COLOR_ERROR => "error:");
-    eprint!(" ");
-    eprintln!(&*COLOR_MESSAGE => "{}", err.kind);
+    let Span { start, end } = span;
+    let window = &lines[start.line.saturating_sub(3)..min(lines.len(), end.line + 3)];
 
     eprint!(&*COLOR_INFO => "{}-->", line_number_indent);
-    eprintln!(" {}:{}:{}", filename, start.line, end.line);
+    eprintln!(" {}:{}:{}", filename, start.line + 1, start.column + 1);
 
     eprintln!(&*COLOR_INFO => "{} |", line_number_indent);
     for (number, line) in window {
-        eprint!(&*COLOR_INFO => "{:>width$} |", number, width=line_number_width);
+        eprint!(&*COLOR_INFO => "{:>width$} |", number + 1, width=line_number_width);
         eprintln!(" {}", line);
-        eprint!(&*COLOR_INFO => "{} |", line_number_indent);
         if (start.line..=end.line).contains(&number) {
+            eprint!(&*COLOR_INFO => "{} |", line_number_indent);
             eprint!(" {}", " ".repeat(start.column));
             eprintln!(
                 &*COLOR_ERROR => "{} {}",
                 "^".repeat(end.column - start.column),
-                err.kind.summary()
+                summary
             );
-        } else {
-            eprintln!("");
         }
     }
 }
 
-fn print_interpreter_error(_filename: &str, _source: &str, err: &InterpreterError) {
+fn print_parser_error(filename: &str, source: &str, err: &ParserError) {
+    eprint!(&*COLOR_ERROR => "error:");
+    eprint!(" ");
+    eprintln!(&*COLOR_MESSAGE => "{}", err.kind);
+    show_span(filename, source, err.span, err.kind.summary());
+}
+
+fn print_interpreter_error(filename: &str, source: &str, err: &InterpreterError) {
     eprint!(&*COLOR_ERROR => "runtime error:");
     eprint!(" ");
-    eprintln!(&*COLOR_MESSAGE => "{}", err);
+    eprintln!(&*COLOR_MESSAGE => "{}", err.kind);
+    show_span(filename, source, err.span, err.kind.summary());
 }
 
 fn main() {

@@ -94,9 +94,9 @@ impl<'i, 'toks> Parser<'i, 'toks> {
     }
 
     #[track_caller]
-    pub fn eat(&mut self, expect: TokenKind<'i>) -> Result<'i, ()> {
+    pub fn eat(&mut self, expect: TokenKind<'i>) -> Result<'i, Token> {
         match self.next_token() {
-            Ok(token) if token.kind == expect => Ok(()),
+            Ok(token) if token.kind == expect => Ok(token),
             Ok(token) => Err(ParserError::unexpected_token(token, Some(vec![expect]))),
             Err(_) => Err(ParserError::unexpected_eof(
                 self.span_eof(),
@@ -115,13 +115,13 @@ impl<'i, 'toks> Parser<'i, 'toks> {
 }
 
 impl<'i, 'toks> Parser<'i, 'toks> {
-    pub fn parse_stmt(&mut self) -> Result<'i, AstStmt> {
+    pub fn parse_stmt(&mut self) -> Result<'i, Ast<AstStmt>> {
         match self.lookahead(0).map(|t| (t, t.kind))? {
-            (_, TokenKind::If) => Ok(AstStmt::IfStmt(Box::new(self.parse_if_stmt()?))),
-            (_, TokenKind::While) => Ok(AstStmt::WhileStmt(Box::new(self.parse_while_stmt()?))),
-            (_, TokenKind::Begin) => Ok(AstStmt::BeginStmt(Box::new(self.parse_begin_stmt()?))),
-            (_, TokenKind::Dump) => Ok(AstStmt::DumpStmt(Box::new(self.parse_dump_stmt()?))),
-            (_, TokenKind::Ident(_)) => Ok(AstStmt::AssgStmt(Box::new(self.parse_assg_stmt()?))),
+            (_, TokenKind::If) => Ok(AstStmt::from_if_stmt(self.parse_if_stmt()?)),
+            (_, TokenKind::While) => Ok(AstStmt::from_while_stmt(self.parse_while_stmt()?)),
+            (_, TokenKind::Begin) => Ok(AstStmt::from_begin_stmt(self.parse_begin_stmt()?)),
+            (_, TokenKind::Dump) => Ok(AstStmt::from_dump_stmt(self.parse_dump_stmt()?)),
+            (_, TokenKind::Ident(_)) => Ok(AstStmt::from_assg_stmt(self.parse_assg_stmt()?)),
             (token, _) => Err(ParserError::unexpected_token(
                 token,
                 Some(vec![
@@ -136,85 +136,125 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         }
     }
 
-    fn parse_if_stmt(&mut self) -> Result<'i, AstIfStmt> {
-        self.eat(TokenKind::If)?;
-        let cond = Box::new(self.parse_bool_expr()?);
+    fn parse_if_stmt(&mut self) -> Result<'i, Ast<AstIfStmt>> {
+        let start = self.eat(TokenKind::If)?.span.start;
+        let cond = self.parse_bool_expr()?;
         self.eat(TokenKind::Then)?;
-        let then = Box::new(self.parse_stmt()?);
+        let then = self.parse_stmt()?;
         self.eat(TokenKind::Else)?;
-        let otherwise = Box::new(self.parse_stmt()?);
+        let otherwise = self.parse_stmt()?;
+        let end = otherwise.span.end;
 
-        Ok(AstIfStmt {
+        Ok(AstIfStmt::from_elements(
+            Span::new(start, end),
             cond,
             then,
             otherwise,
-        })
+        ))
     }
 
-    fn parse_while_stmt(&mut self) -> Result<'i, AstWhileStmt> {
-        self.eat(TokenKind::While)?;
-        let cond = Box::new(self.parse_bool_expr()?);
+    fn parse_while_stmt(&mut self) -> Result<'i, Ast<AstWhileStmt>> {
+        let start = self.eat(TokenKind::While)?.span.start;
+        let cond = self.parse_bool_expr()?;
         self.eat(TokenKind::Do)?;
-        let body = Box::new(self.parse_stmt()?);
+        let body = self.parse_stmt()?;
+        let end = body.span.end;
 
-        Ok(AstWhileStmt { cond, body })
+        Ok(AstWhileStmt::from_elements(
+            Span::new(start, end),
+            cond,
+            body,
+        ))
     }
 
-    fn parse_begin_stmt(&mut self) -> Result<'i, AstBeginStmt> {
+    fn parse_begin_stmt(&mut self) -> Result<'i, Ast<AstBeginStmt>> {
         self.eat(TokenKind::Begin)?;
-        let list = Box::new(self.parse_stmt_list()?);
+        let list = self.parse_stmt_list()?;
         self.eat(TokenKind::End)?;
 
-        Ok(AstBeginStmt { list })
+        Ok(AstBeginStmt::from_list(list))
     }
 
-    fn parse_stmt_list(&mut self) -> Result<'i, AstStmtList> {
-        let stmt = Box::new(self.parse_stmt()?);
-
+    fn parse_stmt_list(&mut self) -> Result<'i, Ast<AstStmtList>> {
+        let stmt = self.parse_stmt()?;
+        let start = stmt.span.start;
         let token = self.lookahead(0)?;
-        let next = if token.kind == TokenKind::Semicolon {
+        let (next, end) = if token.kind == TokenKind::Semicolon {
             self.eat(TokenKind::Semicolon)?;
-            Some(Box::new(self.parse_stmt_list()?))
+            let rest = self.parse_stmt_list()?;
+            let end = rest.span.end;
+            (Some(rest), end)
         } else {
-            None
+            (None, stmt.span.end)
         };
 
-        Ok(AstStmtList { stmt, next })
+        Ok(AstStmtList::from_elements(
+            Span::new(start, end),
+            stmt,
+            next,
+        ))
     }
 
-    fn parse_assg_stmt(&mut self) -> Result<'i, AstAssgStmt> {
-        let var = Box::new(self.parse_var()?);
+    fn parse_assg_stmt(&mut self) -> Result<'i, Ast<AstAssgStmt>> {
+        let var = self.parse_var()?;
         self.eat(TokenKind::AssgEqual)?;
-        let expr = Box::new(self.parse_arith_expr()?);
+        let expr = self.parse_arith_expr()?;
+        let start = var.span.start;
+        let end = expr.span.end;
 
-        Ok(AstAssgStmt { var, expr })
+        Ok(AstAssgStmt::from_elements(Span::new(start, end), var, expr))
     }
 
-    fn parse_dump_stmt(&mut self) -> Result<'i, AstDumpStmt> {
+    fn parse_dump_stmt(&mut self) -> Result<'i, Ast<AstDumpStmt>> {
         self.eat(TokenKind::Dump)?;
-        let var = Box::new(self.parse_var()?);
+        let var = self.parse_var()?;
 
-        Ok(AstDumpStmt { var })
+        Ok(AstDumpStmt::from_var(var))
     }
 
-    fn parse_bool_expr(&mut self) -> Result<'i, AstBoolExpr> {
-        let lhs = Box::new(self.parse_arith_expr()?);
-        let op = Box::new(self.parse_compare_op()?);
-        let rhs = Box::new(self.parse_arith_expr()?);
+    fn parse_bool_expr(&mut self) -> Result<'i, Ast<AstBoolExpr>> {
+        let lhs = self.parse_arith_expr()?;
+        let op = self.parse_compare_op()?;
+        let rhs = self.parse_arith_expr()?;
+        let start = lhs.span.start;
+        let end = rhs.span.end;
 
-        Ok(AstBoolExpr { lhs, op, rhs })
+        Ok(AstBoolExpr::from_elements(
+            Span::new(start, end),
+            lhs,
+            op,
+            rhs,
+        ))
     }
 
-    fn parse_compare_op(&mut self) -> Result<'i, AstCompareOp> {
+    fn parse_compare_op(&mut self) -> Result<'i, Ast<AstCompareOp>> {
         match self.next_token().map(|t| (t, t.kind))? {
-            (_, TokenKind::Lt) => Ok(AstCompareOp::Lt),
-            (_, TokenKind::Gt) => Ok(AstCompareOp::Gt),
-            (_, TokenKind::Le) => Ok(AstCompareOp::Le),
-            (_, TokenKind::Ge) => Ok(AstCompareOp::Ge),
-            (_, TokenKind::Eq) => Ok(AstCompareOp::Eq),
-            (_, TokenKind::Ne) => Ok(AstCompareOp::Ne),
-            (token, _) => Err(ParserError::unexpected_token(
-                token,
+            (tok, TokenKind::Lt) => Ok(Ast {
+                ast: AstCompareOp::Lt,
+                span: tok.span,
+            }),
+            (tok, TokenKind::Gt) => Ok(Ast {
+                ast: AstCompareOp::Gt,
+                span: tok.span,
+            }),
+            (tok, TokenKind::Le) => Ok(Ast {
+                ast: AstCompareOp::Le,
+                span: tok.span,
+            }),
+            (tok, TokenKind::Ge) => Ok(Ast {
+                ast: AstCompareOp::Ge,
+                span: tok.span,
+            }),
+            (tok, TokenKind::Eq) => Ok(Ast {
+                ast: AstCompareOp::Eq,
+                span: tok.span,
+            }),
+            (tok, TokenKind::Ne) => Ok(Ast {
+                ast: AstCompareOp::Ne,
+                span: tok.span,
+            }),
+            (tok, _) => Err(ParserError::unexpected_token(
+                tok,
                 Some(vec![
                     TokenKind::Lt,
                     TokenKind::Gt,
@@ -227,30 +267,35 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         }
     }
 
-    fn parse_arith_expr(&mut self) -> Result<'i, AstArithExpr> {
+    fn parse_arith_expr(&mut self) -> Result<'i, Ast<AstArithExpr>> {
         match self.lookahead(0).map(|t| (t, t.kind))? {
             (_, TokenKind::OpenPar) => {
-                self.eat(TokenKind::OpenPar)?;
-                let lhs = Box::new(self.parse_arith_expr()?);
-                let op = Box::new(self.parse_arith_op()?);
-                let rhs = Box::new(self.parse_arith_expr()?);
-                self.eat(TokenKind::ClosePar)?;
-                Ok(AstArithExpr::Op { lhs, op, rhs })
+                let start = self.eat(TokenKind::OpenPar)?.span.start;
+                let lhs = self.parse_arith_expr()?;
+                let op = self.parse_arith_op()?;
+                let rhs = self.parse_arith_expr()?;
+                let end = self.eat(TokenKind::ClosePar)?.span.end;
+                Ok(AstArithExpr::from_op_elements(
+                    Span::new(start, end),
+                    lhs,
+                    op,
+                    rhs,
+                ))
             }
             (_, TokenKind::Number(_)) => {
-                let value = Box::new(self.parse_const()?);
-                Ok(AstArithExpr::Const(value))
+                let value = self.parse_const()?;
+                Ok(AstArithExpr::from_const(value))
             }
             (_, TokenKind::Ident(_)) => {
                 // peek next identifiers to determine whether it's fncall or variable, look one
                 // token ahead.
                 if self.lookahead(1).map(|t| t.kind).ok() == Some(TokenKind::OpenPar) {
                     // fncall
-                    let fncall = Box::new(self.parse_fncall()?);
-                    Ok(AstArithExpr::FnCall(fncall))
+                    let fncall = self.parse_fncall()?;
+                    Ok(AstArithExpr::from_fncall(fncall))
                 } else {
-                    let var = Box::new(self.parse_var()?);
-                    Ok(AstArithExpr::Var(var))
+                    let var = self.parse_var()?;
+                    Ok(AstArithExpr::from_var(var))
                 }
             }
             (token, _) => Err(ParserError::unexpected_token(
@@ -264,40 +309,69 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         }
     }
 
-    fn parse_fncall(&mut self) -> Result<'i, AstFnCall> {
-        let ident = Box::new(self.parse_ident()?);
+    fn parse_fncall(&mut self) -> Result<'i, Ast<AstFnCall>> {
+        let ident = self.parse_ident()?;
         self.eat(TokenKind::OpenPar)?;
-        let args = Box::new(self.parse_argument_list()?);
-        self.eat(TokenKind::ClosePar)?;
+        let args = self.parse_argument_list()?;
+        let end = self.eat(TokenKind::ClosePar)?.span.end;
+        let start = ident.span.start;
 
-        Ok(AstFnCall { ident, args })
+        Ok(AstFnCall::from_elements(Span::new(start, end), ident, args))
     }
 
-    fn parse_argument_list(&mut self) -> Result<'i, AstArgumentList> {
-        match self.lookahead(0).map(|t| t.kind)? {
-            TokenKind::ClosePar => Ok(AstArgumentList::Empty),
+    fn parse_argument_list(&mut self) -> Result<'i, Ast<AstArgumentList>> {
+        match self.lookahead(0).map(|t| (t, t.kind))? {
+            (t, TokenKind::ClosePar) => Ok(Ast {
+                ast: AstArgumentList::Empty,
+                span: Span::new(t.span.start, t.span.start),
+            }),
             _ => {
-                let expr = Box::new(self.parse_arith_expr()?);
-                let next = if self.lookahead(0).map(|t| t.kind).ok() == Some(TokenKind::Comma) {
+                let expr = self.parse_arith_expr()?;
+                let next = self.lookahead(0);
+                let next = if next.as_ref().map(|t| t.kind).ok() == Some(TokenKind::Comma) {
                     self.eat(TokenKind::Comma)?;
-                    Box::new(self.parse_argument_list()?)
+                    self.parse_argument_list()?
                 } else {
-                    Box::new(AstArgumentList::Empty)
+                    let span = next
+                        .map(|t| Span::new(t.span.start, t.span.start))
+                        .unwrap_or_else(|_| self.span_eof());
+                    Ast {
+                        ast: AstArgumentList::Empty,
+                        span,
+                    }
                 };
+                let start = expr.span.start;
+                let end = next.span.end;
 
-                Ok(AstArgumentList::Nonempty { expr, next })
+                Ok(AstArgumentList::from_elements(
+                    Span::new(start, end),
+                    expr,
+                    next,
+                ))
             }
         }
     }
 
-    fn parse_arith_op(&mut self) -> Result<'i, AstArithOp> {
+    fn parse_arith_op(&mut self) -> Result<'i, Ast<AstArithOp>> {
         match self.next_token().map(|t| (t, t.kind))? {
-            (_, TokenKind::Add) => Ok(AstArithOp::Add),
-            (_, TokenKind::Sub) => Ok(AstArithOp::Sub),
-            (_, TokenKind::Mul) => Ok(AstArithOp::Mul),
-            (_, TokenKind::Div) => Ok(AstArithOp::Div),
-            (token, _) => Err(ParserError::unexpected_token(
-                token,
+            (tok, TokenKind::Add) => Ok(Ast {
+                ast: AstArithOp::Add,
+                span: tok.span,
+            }),
+            (tok, TokenKind::Sub) => Ok(Ast {
+                ast: AstArithOp::Sub,
+                span: tok.span,
+            }),
+            (tok, TokenKind::Mul) => Ok(Ast {
+                ast: AstArithOp::Mul,
+                span: tok.span,
+            }),
+            (tok, TokenKind::Div) => Ok(Ast {
+                ast: AstArithOp::Div,
+                span: tok.span,
+            }),
+            (tok, _) => Err(ParserError::unexpected_token(
+                tok,
                 Some(vec![
                     TokenKind::Add,
                     TokenKind::Sub,
@@ -308,25 +382,31 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         }
     }
 
-    fn parse_const(&mut self) -> Result<'i, AstConst> {
+    fn parse_const(&mut self) -> Result<'i, Ast<AstConst>> {
         match self.next_token().map(|t| (t, t.kind))? {
-            (_, TokenKind::Number(value)) => Ok(AstConst(value)),
-            (token, _) => Err(ParserError::unexpected_token(
-                token,
+            (tok, TokenKind::Number(value)) => Ok(Ast {
+                ast: AstConst(value),
+                span: tok.span,
+            }),
+            (tok, _) => Err(ParserError::unexpected_token(
+                tok,
                 Some(vec![TokenKind::Number(0)]),
             )),
         }
     }
 
-    fn parse_var(&mut self) -> Result<'i, AstVar> {
-        self.parse_ident().map(AstVar)
+    fn parse_var(&mut self) -> Result<'i, Ast<AstVar>> {
+        self.parse_ident().map(AstVar::from_ident)
     }
 
-    fn parse_ident(&mut self) -> Result<'i, AstIdent> {
+    fn parse_ident(&mut self) -> Result<'i, Ast<AstIdent>> {
         match self.next_token().map(|t| (t, t.kind))? {
-            (_, TokenKind::Ident(ident)) => Ok(AstIdent(ident.to_string())),
-            (token, _) => Err(ParserError::unexpected_token(
-                token,
+            (tok, TokenKind::Ident(ident)) => Ok(Ast {
+                ast: AstIdent(ident.to_string()),
+                span: tok.span,
+            }),
+            (tok, _) => Err(ParserError::unexpected_token(
+                tok,
                 Some(vec![TokenKind::Ident("")]),
             )),
         }

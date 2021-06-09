@@ -29,14 +29,14 @@ pub type Result<'a, T, E = Error<'a>> = std::result::Result<T, E>;
 #[cfg(test)]
 mod tests {
     use super::Result;
-    use crate::ast::AstStmt;
+    use crate::ast::{Ast, AstStmt};
     use crate::interpreter::run;
     use crate::interpreter::State;
     use crate::lexer::tokenize;
     use crate::parser::Parser;
     use maplit::hashmap;
 
-    fn parse(source: &str) -> Result<AstStmt> {
+    fn parse(source: &str) -> Result<Ast<AstStmt>> {
         let tokens = tokenize(source);
         Parser::new(&tokens).parse_stmt().map_err(Into::into)
     }
