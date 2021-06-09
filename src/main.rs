@@ -129,11 +129,11 @@ fn main() {
 
     let tokens = tokenize(&source);
 
-    println!("--- tokens ---");
-    for token in &tokens {
-        println!("{:?}", token);
-    }
-    println!();
+    // println!("--- tokens ---");
+    // for token in &tokens {
+    //     println!("{:?}", token);
+    // }
+    // println!();
 
     let ast = match parse(&tokens) {
         Ok(ast) => ast,
