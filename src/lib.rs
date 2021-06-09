@@ -28,17 +28,10 @@ pub type Result<'a, T, E = Error<'a>> = std::result::Result<T, E>;
 
 #[cfg(test)]
 mod tests {
-    use super::Result;
-    use crate::ast::{Ast, AstStmt};
     use crate::interpreter::run;
     use crate::lexer::tokenize;
-    use crate::parser::Parser;
+    use crate::parser::parse;
     use maplit::hashmap;
-
-    fn parse(source: &str) -> Result<Ast<AstStmt>> {
-        let tokens = tokenize(source);
-        Parser::new(&tokens).parse_stmt().map_err(Into::into)
-    }
 
     #[test]
     fn fib() {
@@ -56,7 +49,8 @@ begin
     end
 end
 "#;
-        let ast = parse(source).expect("it should parse");
+        let tokens = tokenize(source);
+        let ast = parse(&tokens).expect("it should parse");
         let state = run(&ast).expect("it should run");
         assert_eq! {
             state.variables(),
@@ -79,7 +73,8 @@ begin
     dump dice
 end
 "#;
-        let ast = parse(source).expect("it should parse");
+        let tokens = tokenize(source);
+        let ast = parse(&tokens).expect("it should parse");
         let state = run(&ast).expect("it should run");
         assert!((10..=20).contains(&state.variables()["dice"]));
     }

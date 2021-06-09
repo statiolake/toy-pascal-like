@@ -18,6 +18,8 @@ pub enum ParserErrorKind<'i> {
     },
     #[error("unexpected EOF{}", format_expects(&.expects))]
     UnexpectedEof { expects: Option<Vec<TokenKind<'i>>> },
+    #[error("some tokens are left unread")]
+    NotEntirelyConsumed,
 }
 
 impl ParserErrorKind<'_> {
@@ -27,6 +29,7 @@ impl ParserErrorKind<'_> {
                 format!("unexpected {}", token_kind)
             }
             ParserErrorKind::UnexpectedEof { .. } => "unexpected eof".to_string(),
+            ParserErrorKind::NotEntirelyConsumed => "those tokens were not parsed".to_string(),
         }
     }
 }
@@ -48,6 +51,23 @@ impl<'i> ParserError<'i> {
             kind: ParserErrorKind::UnexpectedEof { expects },
         }
     }
+
+    pub fn not_entirely_consumed(span: Span) -> Self {
+        Self {
+            span,
+            kind: ParserErrorKind::NotEntirelyConsumed,
+        }
+    }
+}
+
+pub fn parse<'i>(tokens: &[Token<'i>]) -> Result<'i, Ast<AstStmt>> {
+    let mut parser = Parser::new(tokens);
+    let stmt = parser.parse_stmt()?;
+    if let Some(span_left_tokens) = parser.span_left_tokens() {
+        return Err(ParserError::not_entirely_consumed(span_left_tokens));
+    }
+
+    Ok(stmt)
 }
 
 fn format_expects(expects: &Option<Vec<TokenKind>>) -> String {
@@ -103,6 +123,14 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                 Some(vec![expect]),
             )),
         }
+    }
+
+    fn span_left_tokens(&self) -> Option<Span> {
+        let spans = (&self.input[self.ptr..])
+            .iter()
+            .map(|t| t.span)
+            .collect_vec();
+        Span::min_wrapping(&spans)
     }
 
     fn span_eof(&self) -> Span {

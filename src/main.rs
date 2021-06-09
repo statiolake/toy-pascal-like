@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use pascal_like::interpreter::run;
 use pascal_like::interpreter::InterpreterError;
 use pascal_like::lexer::{tokenize, Span};
-use pascal_like::parser::{Parser, ParserError};
+use pascal_like::parser::{parse, ParserError};
 use std::cmp::min;
 use std::io::prelude::*;
 use std::sync::Mutex;
@@ -135,7 +135,7 @@ fn main() {
     }
     println!();
 
-    let ast = match Parser::new(&tokens).parse_stmt() {
+    let ast = match parse(&tokens) {
         Ok(ast) => ast,
         Err(err) => {
             print_parser_error(&filename, &source, &err);
