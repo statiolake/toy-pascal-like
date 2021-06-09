@@ -193,7 +193,7 @@ where
 
 #[derive(Debug, Clone)]
 pub enum Value {
-    Int(i32),
+    Int(i64),
     Float(f64),
 }
 
@@ -211,7 +211,7 @@ impl Value {
         }
     }
 
-    pub fn int(&self, span: Span) -> Result<i32> {
+    pub fn int(&self, span: Span) -> Result<i64> {
         match self {
             Value::Int(int) => Ok(*int),
             _ => Err(InterpreterError {
@@ -237,7 +237,7 @@ impl Value {
         }
     }
 
-    pub fn unwrap_int(&self) -> i32 {
+    pub fn unwrap_int(&self) -> i64 {
         match self {
             Value::Int(int) => *int,
             _ => panic!("value is actually not an int"),
@@ -324,7 +324,7 @@ impl<'a> State<'a> {
                 let mut line = String::new();
                 io::stdin().read_line(&mut line).unwrap();
                 Ok(Value::Int(
-                    line.trim().parse::<i32>().expect("failed to parse stdin"),
+                    line.trim().parse::<i64>().expect("failed to parse stdin"),
                 ))
             }),
         );

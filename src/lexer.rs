@@ -89,7 +89,7 @@ pub enum TokenKind<'a> {
     Mul,
     Div,
     Ident(&'a str),
-    IntConst(i32),
+    IntConst(i64),
     FloatConst(f64),
     Unknown(char),
 }
@@ -300,7 +300,7 @@ impl<'a> Iterator for Splitter<'a> {
             if value.contains('.') {
                 Token::new(span, TokenKind::FloatConst(value.parse::<f64>().unwrap()))
             } else {
-                Token::new(span, TokenKind::IntConst(value.parse::<i32>().unwrap()))
+                Token::new(span, TokenKind::IntConst(value.parse::<i64>().unwrap()))
             }
         } else if next.is_ascii_alphabetic() {
             // when next char is ascii alphabet: read consecutive alphabets, numbers and underscore

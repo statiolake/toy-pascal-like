@@ -419,7 +419,7 @@ pub enum AstArithOp {
 
 #[derive(Debug)]
 pub enum AstConst {
-    Int(i32),
+    Int(i64),
     Float(f64),
 }
 
