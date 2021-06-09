@@ -260,7 +260,16 @@ impl<'i, 'toks> Parser<'i, 'toks> {
     fn parse_begin_stmt(&mut self) -> Result<'i, Ast<AstBeginStmt>> {
         let start = self.eat(TokenKind::Begin)?.span.start;
         let list = self.parse_stmt_list()?;
-        let end = self.eat(TokenKind::End)?.span.end;
+        let end = match self.eat(TokenKind::End) {
+            Ok(token) => token.span.end,
+            Err(mut err) => {
+                err.hints.push(Hint {
+                    span: Some((list.span, "try adding semicolon after this".to_string())),
+                    message: "parhaps you missed a semicolon".to_string(),
+                });
+                return Err(err);
+            }
+        };
 
         Ok(AstBeginStmt::from_list(Span::new(start, end), list))
     }
