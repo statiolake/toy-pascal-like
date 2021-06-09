@@ -7,11 +7,20 @@ pub mod parser;
 pub enum Error<'a> {
     #[error("parse error: {0}")]
     ParserError(parser::ParserError<'a>),
+
+    #[error("runtime error: {0}")]
+    InterpreterError(interpreter::InterpreterError),
 }
 
 impl<'a> From<parser::ParserError<'a>> for Error<'a> {
     fn from(err: parser::ParserError<'a>) -> Self {
         Self::ParserError(err)
+    }
+}
+
+impl<'a> From<interpreter::InterpreterError> for Error<'a> {
+    fn from(err: interpreter::InterpreterError) -> Self {
+        Self::InterpreterError(err)
     }
 }
 
@@ -32,9 +41,9 @@ mod tests {
         Parser::new(&tokens).parse_stmt().map_err(Into::into)
     }
 
-    fn run_source(source: &str) -> State {
+    fn run_source(source: &str) -> Result<State> {
         let ast = parse(source).unwrap_or_else(|e| panic!("{}", e));
-        run(&ast)
+        run(&ast).map_err(Into::into)
     }
 
     #[test]
@@ -53,7 +62,7 @@ begin
     end
 end
 "#;
-        let state = run_source(source);
+        let state = run_source(source).expect("it should run");
         assert_eq! {
             state.variables(),
             &hashmap! {
@@ -75,7 +84,7 @@ begin
     dump dice
 end
 "#;
-        let state = run_source(source);
+        let state = run_source(source).expect("it shoudl run");
         assert!((10..=20).contains(&state.variables()["dice"]));
     }
 }

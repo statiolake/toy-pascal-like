@@ -1,9 +1,9 @@
 use itertools::Itertools as _;
 use once_cell::sync::Lazy;
 use pascal_like::interpreter::run;
+use pascal_like::interpreter::InterpreterError;
 use pascal_like::lexer::tokenize;
-use pascal_like::parser::Parser;
-use pascal_like::parser::ParserError;
+use pascal_like::parser::{Parser, ParserError};
 use std::cmp::min;
 use std::fmt;
 use std::io::prelude::*;
@@ -13,6 +13,22 @@ use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 static STDERR: Lazy<Mutex<StandardStream>> =
     Lazy::new(|| Mutex::new(StandardStream::stderr(ColorChoice::Auto)));
+
+static COLOR_ERROR: Lazy<ColorSpec> = Lazy::new(|| {
+    let mut cs = ColorSpec::new();
+    cs.set_fg(Some(Color::Red));
+    cs
+});
+static COLOR_INFO: Lazy<ColorSpec> = Lazy::new(|| {
+    let mut cs = ColorSpec::new();
+    cs.set_fg(Some(Color::Cyan));
+    cs
+});
+static COLOR_MESSAGE: Lazy<ColorSpec> = Lazy::new(|| {
+    let mut cs = ColorSpec::new();
+    cs.set_bold(true);
+    cs
+});
 
 fn print_with_color(display: fmt::Arguments, color: &ColorSpec) {
     let mut stderr = STDERR.lock().unwrap();
@@ -39,7 +55,7 @@ macro_rules! eprintln {
     };
 }
 
-fn print_error(filename: &str, source: &str, err: &ParserError) {
+fn print_parser_error(filename: &str, source: &str, err: &ParserError) {
     let lines = source.lines().enumerate().collect_vec();
     let start = err.span.start;
     let end = err.span.end;
@@ -48,31 +64,22 @@ fn print_error(filename: &str, source: &str, err: &ParserError) {
     let line_number_width = source.len().to_string().len() + 1;
     let line_number_indent = " ".repeat(line_number_width);
 
-    let mut color_error = ColorSpec::new();
-    color_error.set_fg(Some(Color::Red));
-
-    let mut color_info = ColorSpec::new();
-    color_info.set_fg(Some(Color::Cyan));
-
-    let mut color_message = ColorSpec::new();
-    color_message.set_bold(true);
-
-    eprint!(&color_error => "error:");
+    eprint!(&*COLOR_ERROR => "error:");
     eprint!(" ");
-    eprintln!(&color_message => "{}", err.kind);
+    eprintln!(&*COLOR_MESSAGE => "{}", err.kind);
 
-    eprint!(&color_info => "{}-->", line_number_indent);
+    eprint!(&*COLOR_INFO => "{}-->", line_number_indent);
     eprintln!(" {}:{}:{}", filename, start.line, end.line);
 
-    eprintln!(&color_info => "{} |", line_number_indent);
+    eprintln!(&*COLOR_INFO => "{} |", line_number_indent);
     for (number, line) in window {
-        eprint!(&color_info => "{:>width$} |", number, width=line_number_width);
+        eprint!(&*COLOR_INFO => "{:>width$} |", number, width=line_number_width);
         eprintln!(" {}", line);
-        eprint!(&color_info => "{} |", line_number_indent);
+        eprint!(&*COLOR_INFO => "{} |", line_number_indent);
         if (start.line..=end.line).contains(&number) {
             eprint!(" {}", " ".repeat(start.column));
             eprintln!(
-                &color_error => "{} {}",
+                &*COLOR_ERROR => "{} {}",
                 "^".repeat(end.column - start.column),
                 err.kind.summary()
             );
@@ -80,6 +87,12 @@ fn print_error(filename: &str, source: &str, err: &ParserError) {
             eprintln!("");
         }
     }
+}
+
+fn print_interpreter_error(_filename: &str, _source: &str, err: &InterpreterError) {
+    eprint!(&*COLOR_ERROR => "runtime error:");
+    eprint!(" ");
+    eprintln!(&*COLOR_MESSAGE => "{}", err);
 }
 
 fn main() {
@@ -100,7 +113,7 @@ fn main() {
     let ast = match Parser::new(&tokens).parse_stmt() {
         Ok(ast) => ast,
         Err(err) => {
-            print_error(&filename, &source, &err);
+            print_parser_error(&filename, &source, &err);
             return;
         }
     };
@@ -110,9 +123,15 @@ fn main() {
     println!();
 
     println!("--- run ---");
-    let state = run(&ast);
+    let state = match run(&ast) {
+        Ok(state) => state,
+        Err(err) => {
+            print_interpreter_error(&filename, &source, &err);
+            return;
+        }
+    };
     println!();
 
-    println!("--- variables ---");
+    println!("--- final state ---");
     state.display();
 }
