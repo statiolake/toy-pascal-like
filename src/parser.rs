@@ -321,10 +321,11 @@ impl<'i, 'toks> Parser<'i, 'toks> {
     }
 
     fn parse_dump_stmt(&mut self) -> Result<'i, Ast<AstDumpStmt>> {
-        self.eat(TokenKind::Dump)?;
+        let start = self.eat(TokenKind::Dump)?.span.start;
         let var = self.parse_var()?;
+        let end = var.span.end;
 
-        Ok(AstDumpStmt::from_var(var))
+        Ok(AstDumpStmt::from_var(Span::new(start, end), var))
     }
 
     fn parse_bool_expr(&mut self) -> Result<'i, Ast<AstBoolExpr>> {

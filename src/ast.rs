@@ -214,9 +214,9 @@ pub struct AstDumpStmt {
 }
 
 impl AstDumpStmt {
-    pub fn from_var(var: Ast<AstVar>) -> Ast<AstDumpStmt> {
+    pub fn from_var(span: Span, var: Ast<AstVar>) -> Ast<AstDumpStmt> {
         Ast {
-            span: var.span,
+            span,
             ast: AstDumpStmt { var: Box::new(var) },
         }
     }
