@@ -166,31 +166,43 @@ impl AstBeginStmt {
 }
 
 #[derive(Debug)]
-pub struct AstStmtList {
-    pub stmt: Box<Ast<AstStmt>>,
-    pub next: Option<Box<Ast<AstStmtList>>>,
+pub enum AstStmtList {
+    Empty,
+    Nonempty {
+        stmt: Box<Ast<AstStmt>>,
+        next: Box<Ast<AstStmtList>>,
+    },
 }
 
 impl AstStmtList {
+    pub fn empty(span: Span) -> Ast<AstStmtList> {
+        Ast {
+            ast: AstStmtList::Empty,
+            span,
+        }
+    }
+
     pub fn from_elements(
         span: Span,
         stmt: Ast<AstStmt>,
-        next: Option<Ast<AstStmtList>>,
+        next: Ast<AstStmtList>,
     ) -> Ast<AstStmtList> {
-        let ast = AstStmtList {
+        let ast = AstStmtList::Nonempty {
             stmt: Box::new(stmt),
-            next: next.map(Box::new),
+            next: Box::new(next),
         };
 
         Ast { span, ast }
     }
 
-    pub fn last_stmt(&self) -> &Ast<AstStmt> {
+    pub fn last_stmt(&self) -> Option<&Ast<AstStmt>> {
+        let mut last = None;
         let mut curr = self;
-        while let Some(list) = &curr.next {
-            curr = &list.ast;
+        while let AstStmtList::Nonempty { stmt, next } = curr {
+            last = Some(&**stmt);
+            curr = &next.ast;
         }
-        &curr.stmt
+        last
     }
 }
 
@@ -552,8 +564,8 @@ impl fmt::Display for AstBeginStmt {
 
 impl fmt::Display for AstStmtList {
     fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(b, "{}", self.stmt.to_string().trim())?;
-        if let Some(next) = &self.next {
+        if let AstStmtList::Nonempty { stmt, next } = self {
+            writeln!(b, "{}", stmt)?;
             writeln!(b, "{}", next)?;
         }
 

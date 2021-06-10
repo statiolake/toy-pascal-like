@@ -272,13 +272,14 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         let end = match self.eat(TokenKind::End) {
             Ok(token) => token.span.end,
             Err(mut err) => {
-                err.hints.push(Hint {
-                    span: Some((
-                        list.ast.last_stmt().span,
-                        "try adding semicolon after this".to_string(),
-                    )),
-                    message: "parhaps you missed a semicolon".to_string(),
-                });
+                // if there is last statement, give a hint to add a semicolon after the last
+                // statement.
+                if let Some(last) = list.ast.last_stmt() {
+                    err.hints.push(Hint {
+                        span: Some((last.span, "try adding semicolon after this".to_string())),
+                        message: "parhaps you missed a semicolon".to_string(),
+                    });
+                }
                 return Err(err);
             }
         };
@@ -287,14 +288,25 @@ impl<'i, 'toks> Parser<'i, 'toks> {
     }
 
     fn parse_stmt_list(&mut self) -> Result<'i, Ast<AstStmtList>> {
+        match self.lookahead(0).map(|t| (t, t.kind))? {
+            (t, TokenKind::End) => Ok(Ast {
+                ast: AstStmtList::Empty,
+                span: Span::new(t.span.start, t.span.start),
+            }),
+            _ => self.parse_nonempty_stmt_list(),
+        }
+    }
+
+    fn parse_nonempty_stmt_list(&mut self) -> Result<'i, Ast<AstStmtList>> {
         let stmt = self.parse_stmt()?;
         let start = stmt.span.start;
         let token = self.lookahead(0)?;
+
         let (next, end) = if token.kind == TokenKind::Semicolon {
             let semi_span = self.eat(TokenKind::Semicolon)?.span;
             // peek the next token for a trailing semicolon hint
             let next_is_end = self.lookahead(0).map(|t| t.kind).ok() == Some(TokenKind::End);
-            let rest = match self.parse_stmt_list() {
+            let rest = match self.parse_nonempty_stmt_list() {
                 Ok(rest) => rest,
                 Err(mut err) => {
                     if next_is_end {
@@ -307,9 +319,12 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                 }
             };
             let end = rest.span.end;
-            (Some(rest), end)
+            (rest, end)
         } else {
-            (None, stmt.span.end)
+            (
+                AstStmtList::empty(Span::new(token.span.start, token.span.start)),
+                stmt.span.end,
+            )
         };
 
         Ok(AstStmtList::from_elements(

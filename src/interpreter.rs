@@ -497,9 +497,9 @@ impl<'a> State<'a> {
     }
 
     fn run_stmt_list(&mut self, list: &'a Ast<AstStmtList>) -> Result<()> {
-        self.run_stmt(&list.ast.stmt)?;
-        if let Some(stmt) = &list.ast.next {
-            self.run_stmt_list(stmt)?;
+        if let AstStmtList::Nonempty { stmt, next } = &list.ast {
+            self.run_stmt(stmt)?;
+            self.run_stmt_list(next)?;
         }
 
         Ok(())

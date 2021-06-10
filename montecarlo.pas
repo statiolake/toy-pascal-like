@@ -7,7 +7,7 @@ begin
             y := RandomFloat();
             if x * x + y * y <= 1.0
                 then inside := inside + 1
-                else inside := inside;
+                else begin end;
             i := i + 1
         end;
         Pi := 4.0 * float(inside) / float(i)

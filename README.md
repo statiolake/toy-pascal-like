@@ -5,7 +5,8 @@ An interpreter for toy language, somewhat similar to PASCAL.
 Currently the syntax follows the following BNF:
 
 ```bnf
-<stmt-list> ::= <stmt> | <stmt>; <stmt-list>
+<stmt-list> ::= ϵ | <nonempty-stmt-list>
+<nonempty-stmt-list> ::= <stmt> | <stmt>; <nonempty-stmt-list>
 <stmt> ::= <funcdef-stmt> | <if-stmt> | <while-stmt> | <begin-stmt> | <assg-stmt> | <dump-stmt>
 <funcdef-stmt> ::= function <ident>(<param-list>): <type>; <begin-stmt>
 <param-list> ::= ϵ | <nonempty-param-list>
