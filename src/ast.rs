@@ -42,6 +42,7 @@ derive_from_for_tuple_like!(AstDumpStmt => AstStmt::DumpStmt, from_dump_stmt);
 pub struct AstFuncdefStmt {
     pub name: Box<Ast<AstIdent>>,
     pub params: Box<Ast<AstParamList>>,
+    pub ret_ty: Box<Ast<AstTy>>,
     pub body: Box<Ast<AstBeginStmt>>,
 }
 
@@ -50,6 +51,7 @@ pub enum AstParamList {
     Empty,
     Nonempty {
         ident: Box<Ast<AstIdent>>,
+        ty: Box<Ast<AstTy>>,
         next: Box<Ast<AstParamList>>,
     },
 }
@@ -65,10 +67,12 @@ impl AstParamList {
     pub fn from_elements(
         span: Span,
         ident: Ast<AstIdent>,
+        ty: Ast<AstTy>,
         next: Ast<AstParamList>,
     ) -> Ast<AstParamList> {
         let ast = AstParamList::Nonempty {
             ident: Box::new(ident),
+            ty: Box::new(ty),
             next: Box::new(next),
         };
         Ast { span, ast }
@@ -77,8 +81,8 @@ impl AstParamList {
 
 impl fmt::Display for AstParamList {
     fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        if let AstParamList::Nonempty { ident: expr, next } = self {
-            writeln!(b, "{}", expr)?;
+        if let AstParamList::Nonempty { ident, ty, next } = self {
+            writeln!(b, "{}: {}", ident, ty)?;
             writeln!(b, "{}", next)?;
         }
 
@@ -91,11 +95,13 @@ impl AstFuncdefStmt {
         span: Span,
         name: Ast<AstIdent>,
         params: Ast<AstParamList>,
+        ret_ty: Ast<AstTy>,
         body: Ast<AstBeginStmt>,
     ) -> Ast<AstFuncdefStmt> {
         let ast = AstFuncdefStmt {
             name: Box::new(name),
             params: Box::new(params),
+            ret_ty: Box::new(ret_ty),
             body: Box::new(body),
         };
         Ast { span, ast }
@@ -440,6 +446,22 @@ impl AstVar {
 }
 
 #[derive(Debug)]
+pub struct AstTy(pub AstIdent);
+
+impl AstTy {
+    pub fn from_ident(ident: Ast<AstIdent>) -> Ast<AstTy> {
+        Ast {
+            ast: AstTy(ident.ast),
+            span: ident.span,
+        }
+    }
+
+    pub fn ident(&self) -> &str {
+        self.0.ident()
+    }
+}
+
+#[derive(Debug)]
 pub struct AstIdent(pub String);
 
 impl AstIdent {
@@ -701,6 +723,12 @@ impl fmt::Display for AstConst {
 impl fmt::Display for AstVar {
     fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
         write!(b, "Var({})", self.0)
+    }
+}
+
+impl fmt::Display for AstTy {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        write!(b, "Ty({})", self.0)
     }
 }
 

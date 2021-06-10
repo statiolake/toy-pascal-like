@@ -181,6 +181,8 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         self.eat(TokenKind::OpenPar)?;
         let params = self.parse_param_list()?;
         self.eat(TokenKind::ClosePar)?;
+        self.eat(TokenKind::Colon)?;
+        let ret_ty = self.parse_ty()?;
         self.eat(TokenKind::Semicolon)?;
         let body = self.parse_begin_stmt()?;
         let end = body.span.end;
@@ -189,6 +191,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
             Span::new(start, end),
             name,
             params,
+            ret_ty,
             body,
         ))
     }
@@ -201,6 +204,9 @@ impl<'i, 'toks> Parser<'i, 'toks> {
             }),
             _ => {
                 let ident = self.parse_ident()?;
+                self.eat(TokenKind::Colon)?;
+                let ty = self.parse_ty()?;
+
                 let next = self.lookahead(0);
                 let next = if next.as_ref().map(|t| t.kind).ok() == Some(TokenKind::Comma) {
                     self.eat(TokenKind::Comma)?;
@@ -220,6 +226,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                 Ok(AstParamList::from_elements(
                     Span::new(start, end),
                     ident,
+                    ty,
                     next,
                 ))
             }
@@ -562,6 +569,10 @@ impl<'i, 'toks> Parser<'i, 'toks> {
 
     fn parse_var(&mut self) -> Result<'i, Ast<AstVar>> {
         self.parse_ident().map(AstVar::from_ident)
+    }
+
+    fn parse_ty(&mut self) -> Result<'i, Ast<AstTy>> {
+        self.parse_ident().map(AstTy::from_ident)
     }
 
     fn parse_ident(&mut self) -> Result<'i, Ast<AstIdent>> {

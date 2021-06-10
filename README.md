@@ -7,8 +7,8 @@ Currently the syntax follows the following BNF:
 ```bnf
 <stmt-list> ::= <stmt> | <stmt>; <stmt-list>
 <stmt> ::= <funcdef-stmt> | <if-stmt> | <while-stmt> | <begin-stmt> | <assg-stmt> | <dump-stmt>
-<funcdef-stmt> ::= function <ident>(<param-list>); <begin-stmt>
-<param-list> ::= ϵ | <ident> | <ident>, <param-list>
+<funcdef-stmt> ::= function <ident>(<param-list>): <type>; <begin-stmt>
+<param-list> ::= ϵ | <ident>: <type> | <ident>: <type>, <param-list>
 <if-stmt> ::= if <bool-expr> then <stmt> else <stmt>
 <while-stmt> ::= while <bool-expr> do <stmt>
 <begin-stmt> ::= begin <stmt-list> end
@@ -29,6 +29,7 @@ Currently the syntax follows the following BNF:
 <digits> ::= <digit> | <digit><digits>
 <digit> ::= 0 | 1 | 2 | ... | 9
 <var> ::= <ident>
+<type> ::= <ident>
 <ident> ::= <letter> | <var><letter> | <var><digit> | <var>_
 <letter> ::= a | b | ... | z | A | ... | Z
 ```

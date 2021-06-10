@@ -75,7 +75,7 @@ end
     fn recursive_fncall() {
         let source = r#"
 begin
-    function Fib(n); begin
+    function Fib(n: int): int; begin
         if n == 0 then
             Fib := 0
         else if n == 1 then

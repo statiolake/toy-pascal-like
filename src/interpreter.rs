@@ -51,6 +51,9 @@ pub enum InterpreterErrorKind {
 
     #[error("binary operation `{op}` is not supported for `{ty}`")]
     UnsupportedBinaryOperation { op: String, ty: ValueTy },
+
+    #[error("unknown type: `{}`", name)]
+    UnknownTy { name: String },
 }
 
 impl InterpreterErrorKind {
@@ -68,6 +71,7 @@ impl InterpreterErrorKind {
             InterpreterErrorKind::UnsupportedBinaryOperation { op, .. } => {
                 format!("{} not supported for this type", op)
             }
+            InterpreterErrorKind::UnknownTy { .. } => "unknown type".to_string(),
         }
     }
 
@@ -415,14 +419,14 @@ impl<'a> State<'a> {
         let name = stmt.ast.name.ast.ident();
         let mut params = vec![];
         let mut curr = &stmt.ast.params.ast;
-        while let AstParamList::Nonempty { ident, next } = curr {
-            params.push(ident);
+        while let AstParamList::Nonempty { ident, ty, next } = curr {
+            params.push((ident, ty));
             curr = &next.ast;
         }
 
         // ensure that there is no same name params
         let mut used = HashSet::new();
-        for param in &params {
+        for (param, _) in &params {
             if !used.insert(param.ast.ident()) {
                 return Err(InterpreterError {
                     span: param.span,
@@ -433,18 +437,21 @@ impl<'a> State<'a> {
             }
         }
 
-        // TODO: currently ValueTy is always int
         let params = params
             .into_iter()
-            .map(|p| Param::new(p.ast.ident().to_string(), ValueTy::Int))
-            .collect_vec();
+            .map(|(p, ty)| {
+                let ty = self.resolve_ty(ty)?;
+                Ok(Param::new(p.ast.ident().to_string(), ty))
+            })
+            .collect::<Result<Vec<_>>>()?;
 
-        // TODO: currently ret_ty is always int
+        let ret_ty = self.resolve_ty(&stmt.ast.ret_ty)?;
+
         let func = Function::new(
             stmt.span,
             name.to_string(),
             params.clone(),
-            ValueTy::Int,
+            ret_ty,
             Box::new(move |state, span, args| {
                 let mut inner_state = state.clone();
                 for (idx, param) in params.iter().enumerate() {
@@ -659,5 +666,18 @@ impl<'a> State<'a> {
         }
 
         Ok(value)
+    }
+
+    fn resolve_ty(&mut self, ty: &'a Ast<AstTy>) -> Result<ValueTy> {
+        match ty.ast.ident() {
+            "int" => Ok(ValueTy::Int),
+            "float" => Ok(ValueTy::Float),
+            other => Err(InterpreterError {
+                span: ty.span,
+                kind: InterpreterErrorKind::UnknownTy {
+                    name: other.to_string(),
+                },
+            }),
+        }
     }
 }
