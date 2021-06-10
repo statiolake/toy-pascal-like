@@ -1,5 +1,6 @@
 use crate::ast::*;
-use crate::lexer::{LineColumn, Span, Token, TokenKind};
+use crate::lexer::{Token, TokenKind};
+use crate::span::{LineColumn, Span};
 use itertools::Itertools as _;
 
 #[derive(Debug)]

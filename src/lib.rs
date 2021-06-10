@@ -2,6 +2,7 @@ pub mod ast;
 pub mod interp;
 pub mod lexer;
 pub mod parser;
+pub mod span;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error<'a> {

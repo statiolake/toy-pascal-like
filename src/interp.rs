@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::lexer::Span;
+use crate::span::Span;
 use dyn_clone::DynClone;
 use itertools::izip;
 use itertools::Itertools as _;

@@ -1,4 +1,4 @@
-use crate::lexer::Span;
+use crate::span::Span;
 use itertools::Itertools as _;
 use std::fmt;
 
