@@ -442,34 +442,34 @@ pub enum AstConst {
 }
 
 #[derive(Debug)]
-pub struct AstVar(pub AstIdent);
+pub struct AstVar(pub Ast<AstIdent>);
 
 impl AstVar {
     pub fn from_ident(ident: Ast<AstIdent>) -> Ast<AstVar> {
         Ast {
-            ast: AstVar(ident.ast),
             span: ident.span,
+            ast: AstVar(ident),
         }
     }
 
-    pub fn ident(&self) -> &str {
-        self.0.ident()
+    pub fn ident(&self) -> &Ast<AstIdent> {
+        &self.0
     }
 }
 
 #[derive(Debug)]
-pub struct AstTy(pub AstIdent);
+pub struct AstTy(pub Ast<AstIdent>);
 
 impl AstTy {
     pub fn from_ident(ident: Ast<AstIdent>) -> Ast<AstTy> {
         Ast {
-            ast: AstTy(ident.ast),
             span: ident.span,
+            ast: AstTy(ident),
         }
     }
 
-    pub fn ident(&self) -> &str {
-        self.0.ident()
+    pub fn ident(&self) -> &Ast<AstIdent> {
+        &self.0
     }
 }
 
