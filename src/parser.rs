@@ -42,40 +42,15 @@ impl ParserErrorKind<'_> {
     }
 }
 
-impl<'i> ParserError<'i> {
-    pub fn unexpected_token(token: Token<'i>, expects: Option<Vec<TokenKind<'i>>>) -> Self {
-        Self {
-            span: token.span,
-            kind: ParserErrorKind::UnexpectedToken {
-                token_kind: token.kind,
-                expects,
-            },
-            hints: vec![],
-        }
-    }
-
-    pub fn unexpected_eof(span: Span, expects: Option<Vec<TokenKind<'i>>>) -> Self {
-        Self {
-            span,
-            kind: ParserErrorKind::UnexpectedEof { expects },
-            hints: vec![],
-        }
-    }
-
-    pub fn not_entirely_consumed(span: Span) -> Self {
-        Self {
-            span,
-            kind: ParserErrorKind::NotEntirelyConsumed,
-            hints: vec![],
-        }
-    }
-}
-
 pub fn parse<'i>(tokens: &[Token<'i>]) -> Result<'i, Ast<AstStmt>> {
     let mut parser = Parser::new(tokens);
     let stmt = parser.parse_stmt()?;
     if let Some(span_left_tokens) = parser.span_left_tokens() {
-        return Err(ParserError::not_entirely_consumed(span_left_tokens));
+        return Err(ParserError {
+            span: span_left_tokens,
+            kind: ParserErrorKind::NotEntirelyConsumed,
+            hints: vec![],
+        });
     }
 
     Ok(stmt)
@@ -112,7 +87,11 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         if self.ptr + n < self.input.len() {
             Ok(self.input[self.ptr + n])
         } else {
-            Err(ParserError::unexpected_eof(self.span_eof(), None))
+            Err(ParserError {
+                span: self.span_eof(),
+                kind: ParserErrorKind::UnexpectedEof { expects: None },
+                hints: vec![],
+            })
         }
     }
 
@@ -124,15 +103,24 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         res
     }
 
-    #[track_caller]
     pub fn eat(&mut self, expect: TokenKind<'i>) -> Result<'i, Token> {
         match self.next_token() {
             Ok(token) if token.kind == expect => Ok(token),
-            Ok(token) => Err(ParserError::unexpected_token(token, Some(vec![expect]))),
-            Err(_) => Err(ParserError::unexpected_eof(
-                self.span_eof(),
-                Some(vec![expect]),
-            )),
+            Ok(token) => Err(ParserError {
+                span: token.span,
+                kind: ParserErrorKind::UnexpectedToken {
+                    token_kind: token.kind,
+                    expects: Some(vec![expect]),
+                },
+                hints: vec![],
+            }),
+            Err(_) => Err(ParserError {
+                span: self.span_eof(),
+                kind: ParserErrorKind::UnexpectedEof {
+                    expects: Some(vec![expect]),
+                },
+                hints: vec![],
+            }),
         }
     }
 
@@ -162,17 +150,21 @@ impl<'i, 'toks> Parser<'i, 'toks> {
             (_, TokenKind::Begin) => Ok(AstStmt::from_begin_stmt(self.parse_begin_stmt()?)),
             (_, TokenKind::Dump) => Ok(AstStmt::from_dump_stmt(self.parse_dump_stmt()?)),
             (_, TokenKind::Ident(_)) => Ok(AstStmt::from_assg_stmt(self.parse_assg_stmt()?)),
-            (token, _) => Err(ParserError::unexpected_token(
-                token,
-                Some(vec![
-                    TokenKind::If,
-                    TokenKind::While,
-                    TokenKind::Begin,
-                    TokenKind::Begin,
-                    TokenKind::Dump,
-                    TokenKind::Ident(""),
-                ]),
-            )),
+            (token, _) => Err(ParserError {
+                span: token.span,
+                kind: ParserErrorKind::UnexpectedToken {
+                    token_kind: token.kind,
+                    expects: Some(vec![
+                        TokenKind::If,
+                        TokenKind::While,
+                        TokenKind::Begin,
+                        TokenKind::Begin,
+                        TokenKind::Dump,
+                        TokenKind::Ident(""),
+                    ]),
+                },
+                hints: vec![],
+            }),
         }
     }
 
@@ -394,17 +386,21 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                 ast: AstCompareOp::Ne,
                 span: tok.span,
             }),
-            (tok, _) => Err(ParserError::unexpected_token(
-                tok,
-                Some(vec![
-                    TokenKind::Lt,
-                    TokenKind::Gt,
-                    TokenKind::Le,
-                    TokenKind::Ge,
-                    TokenKind::Eq,
-                    TokenKind::Ne,
-                ]),
-            )),
+            (tok, _) => Err(ParserError {
+                span: tok.span,
+                kind: ParserErrorKind::UnexpectedToken {
+                    token_kind: tok.kind,
+                    expects: Some(vec![
+                        TokenKind::Lt,
+                        TokenKind::Gt,
+                        TokenKind::Le,
+                        TokenKind::Ge,
+                        TokenKind::Eq,
+                        TokenKind::Ne,
+                    ]),
+                },
+                hints: vec![],
+            }),
         }
     }
 
@@ -513,15 +509,19 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                     Ok(AstPrimaryExpr::from_var(var))
                 }
             }
-            (token, _) => Err(ParserError::unexpected_token(
-                token,
-                Some(vec![
-                    TokenKind::OpenPar,
-                    TokenKind::IntConst(0),
-                    TokenKind::FloatConst(0.0),
-                    TokenKind::Ident(""),
-                ]),
-            )),
+            (token, _) => Err(ParserError {
+                span: token.span,
+                kind: ParserErrorKind::UnexpectedToken {
+                    token_kind: token.kind,
+                    expects: Some(vec![
+                        TokenKind::OpenPar,
+                        TokenKind::IntConst(0),
+                        TokenKind::FloatConst(0.0),
+                        TokenKind::Ident(""),
+                    ]),
+                },
+                hints: vec![],
+            }),
         }
     }
 
@@ -580,10 +580,14 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                 ast: AstConst::Float(value),
                 span: tok.span,
             }),
-            (tok, _) => Err(ParserError::unexpected_token(
-                tok,
-                Some(vec![TokenKind::IntConst(0), TokenKind::FloatConst(0.0)]),
-            )),
+            (tok, _) => Err(ParserError {
+                span: tok.span,
+                kind: ParserErrorKind::UnexpectedToken {
+                    token_kind: tok.kind,
+                    expects: Some(vec![TokenKind::IntConst(0), TokenKind::FloatConst(0.0)]),
+                },
+                hints: vec![],
+            }),
         }
     }
 
@@ -601,10 +605,14 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                 ast: AstIdent(ident.to_string()),
                 span: tok.span,
             }),
-            (tok, _) => Err(ParserError::unexpected_token(
-                tok,
-                Some(vec![TokenKind::Ident("")]),
-            )),
+            (tok, _) => Err(ParserError {
+                span: tok.span,
+                kind: ParserErrorKind::UnexpectedToken {
+                    token_kind: tok.kind,
+                    expects: Some(vec![TokenKind::Ident("")]),
+                },
+                hints: vec![],
+            }),
         }
     }
 }
