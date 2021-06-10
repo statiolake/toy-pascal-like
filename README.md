@@ -29,8 +29,8 @@ Currently the syntax follows the following BNF:
 <digits> ::= <digit> | <digit><digits>
 <digit> ::= 0 | 1 | 2 | ... | 9
 <var> ::= <ident>
-<ident> ::= <letter> | <var><letter> | <var><digit>
-<letter> ::= a | b | ... | z
+<ident> ::= <letter> | <var><letter> | <var><digit> | <var>_
+<letter> ::= a | b | ... | z | A | ... | Z
 ```
 
 # Usage
