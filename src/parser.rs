@@ -202,35 +202,37 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                 ast: AstParamList::Empty,
                 span: Span::new(t.span.start, t.span.start),
             }),
-            _ => {
-                let ident = self.parse_ident()?;
-                self.eat(TokenKind::Colon)?;
-                let ty = self.parse_ty()?;
-
-                let next = self.lookahead(0);
-                let next = if next.as_ref().map(|t| t.kind).ok() == Some(TokenKind::Comma) {
-                    self.eat(TokenKind::Comma)?;
-                    self.parse_param_list()?
-                } else {
-                    let span = next
-                        .map(|t| Span::new(t.span.start, t.span.start))
-                        .unwrap_or_else(|_| self.span_eof());
-                    Ast {
-                        ast: AstParamList::Empty,
-                        span,
-                    }
-                };
-                let start = ident.span.start;
-                let end = next.span.end;
-
-                Ok(AstParamList::from_elements(
-                    Span::new(start, end),
-                    ident,
-                    ty,
-                    next,
-                ))
-            }
+            _ => self.parse_nonempty_param_list(),
         }
+    }
+
+    fn parse_nonempty_param_list(&mut self) -> Result<'i, Ast<AstParamList>> {
+        let ident = self.parse_ident()?;
+        self.eat(TokenKind::Colon)?;
+        let ty = self.parse_ty()?;
+
+        let next = self.lookahead(0);
+        let next = if next.as_ref().map(|t| t.kind).ok() == Some(TokenKind::Comma) {
+            self.eat(TokenKind::Comma)?;
+            self.parse_nonempty_param_list()?
+        } else {
+            let span = next
+                .map(|t| Span::new(t.span.start, t.span.start))
+                .unwrap_or_else(|_| self.span_eof());
+            Ast {
+                ast: AstParamList::Empty,
+                span,
+            }
+        };
+        let start = ident.span.start;
+        let end = next.span.end;
+
+        Ok(AstParamList::from_elements(
+            Span::new(start, end),
+            ident,
+            ty,
+            next,
+        ))
     }
 
     fn parse_if_stmt(&mut self) -> Result<'i, Ast<AstIfStmt>> {
@@ -523,31 +525,33 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                 ast: AstArgumentList::Empty,
                 span: Span::new(t.span.start, t.span.start),
             }),
-            _ => {
-                let expr = self.parse_arith_expr()?;
-                let next = self.lookahead(0);
-                let next = if next.as_ref().map(|t| t.kind).ok() == Some(TokenKind::Comma) {
-                    self.eat(TokenKind::Comma)?;
-                    self.parse_argument_list()?
-                } else {
-                    let span = next
-                        .map(|t| Span::new(t.span.start, t.span.start))
-                        .unwrap_or_else(|_| self.span_eof());
-                    Ast {
-                        ast: AstArgumentList::Empty,
-                        span,
-                    }
-                };
-                let start = expr.span.start;
-                let end = next.span.end;
-
-                Ok(AstArgumentList::from_elements(
-                    Span::new(start, end),
-                    expr,
-                    next,
-                ))
-            }
+            _ => self.parse_nonempty_argument_list(),
         }
+    }
+
+    fn parse_nonempty_argument_list(&mut self) -> Result<'i, Ast<AstArgumentList>> {
+        let expr = self.parse_arith_expr()?;
+        let next = self.lookahead(0);
+        let next = if next.as_ref().map(|t| t.kind).ok() == Some(TokenKind::Comma) {
+            self.eat(TokenKind::Comma)?;
+            self.parse_nonempty_argument_list()?
+        } else {
+            let span = next
+                .map(|t| Span::new(t.span.start, t.span.start))
+                .unwrap_or_else(|_| self.span_eof());
+            Ast {
+                ast: AstArgumentList::Empty,
+                span,
+            }
+        };
+        let start = expr.span.start;
+        let end = next.span.end;
+
+        Ok(AstArgumentList::from_elements(
+            Span::new(start, end),
+            expr,
+            next,
+        ))
     }
 
     fn parse_const(&mut self) -> Result<'i, Ast<AstConst>> {

@@ -8,7 +8,8 @@ Currently the syntax follows the following BNF:
 <stmt-list> ::= <stmt> | <stmt>; <stmt-list>
 <stmt> ::= <funcdef-stmt> | <if-stmt> | <while-stmt> | <begin-stmt> | <assg-stmt> | <dump-stmt>
 <funcdef-stmt> ::= function <ident>(<param-list>): <type>; <begin-stmt>
-<param-list> ::= ϵ | <ident>: <type> | <ident>: <type>, <param-list>
+<param-list> ::= ϵ | <nonempty-param-list>
+<nonempty-param-list> ::= <ident>: <type> | <ident>: <type>, <nonempty-param-list>
 <if-stmt> ::= if <bool-expr> then <stmt> else <stmt>
 <while-stmt> ::= while <bool-expr> do <stmt>
 <begin-stmt> ::= begin <stmt-list> end
@@ -21,7 +22,8 @@ Currently the syntax follows the following BNF:
 <unary-expr> ::= <primary-expr> | - <unary-expr>
 <primary-expr> ::= <var> | <const> | <fncall> | (<arith-expr>)
 <fncall> ::= <ident>(<argument-list>)
-<argument-list> ::= ϵ | <arith-expr> | <arith-expr>, <argument-list>
+<argument-list> ::= ϵ | <nonempty-argument-list>
+<nonempty-argument-list> ::= <arith-expr> | <arith-expr>, <nonempty-argument-list>
 <arith-op> ::= + | - | * | /
 <const> ::= <int-const> | <float-const>
 <int-const> ::= <digits>
