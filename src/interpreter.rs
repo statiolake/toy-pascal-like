@@ -315,6 +315,41 @@ impl<'a> State<'a> {
             .register_func(Span::new_zero(), random_int)
             .expect("internal error");
 
+        let random_float = Function::new(
+            Span::new_zero(),
+            "RandomFloat".to_string(),
+            vec![],
+            ValueTy::Float,
+            Box::new(|_, _, _| Ok(Value::Float(thread_rng().gen()))),
+        );
+        state
+            .register_func(Span::new_zero(), random_float)
+            .expect("internal error");
+
+        // TODO: more generic way
+        let cast_int = Function::new(
+            Span::new_zero(),
+            "int".to_string(),
+            vec![Param::new("value".to_string(), ValueTy::Float)],
+            ValueTy::Int,
+            Box::new(|_, _, args| Ok(Value::Int(args[0].unwrap_float() as _))),
+        );
+        state
+            .register_func(Span::new_zero(), cast_int)
+            .expect("internal error");
+
+        // TODO: more generic way
+        let cast_float = Function::new(
+            Span::new_zero(),
+            "float".to_string(),
+            vec![Param::new("value".to_string(), ValueTy::Int)],
+            ValueTy::Float,
+            Box::new(|_, _, args| Ok(Value::Float(args[0].unwrap_int() as _))),
+        );
+        state
+            .register_func(Span::new_zero(), cast_float)
+            .expect("internal error");
+
         let read_int = Function::new(
             Span::new_zero(),
             "ReadInt".to_string(),
