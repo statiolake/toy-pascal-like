@@ -362,34 +362,34 @@ impl<'i, 'toks> Parser<'i, 'toks> {
 
     fn parse_compare_op(&mut self) -> Result<'i, Ast<AstCompareOp>> {
         match self.next_token().map(|t| (t, t.kind))? {
-            (tok, TokenKind::Lt) => Ok(Ast {
+            (token, TokenKind::Lt) => Ok(Ast {
                 ast: AstCompareOp::Lt,
-                span: tok.span,
+                span: token.span,
             }),
-            (tok, TokenKind::Gt) => Ok(Ast {
+            (token, TokenKind::Gt) => Ok(Ast {
                 ast: AstCompareOp::Gt,
-                span: tok.span,
+                span: token.span,
             }),
-            (tok, TokenKind::Le) => Ok(Ast {
+            (token, TokenKind::Le) => Ok(Ast {
                 ast: AstCompareOp::Le,
-                span: tok.span,
+                span: token.span,
             }),
-            (tok, TokenKind::Ge) => Ok(Ast {
+            (token, TokenKind::Ge) => Ok(Ast {
                 ast: AstCompareOp::Ge,
-                span: tok.span,
+                span: token.span,
             }),
-            (tok, TokenKind::Eq) => Ok(Ast {
+            (token, TokenKind::Eq) => Ok(Ast {
                 ast: AstCompareOp::Eq,
-                span: tok.span,
+                span: token.span,
             }),
-            (tok, TokenKind::Ne) => Ok(Ast {
+            (token, TokenKind::Ne) => Ok(Ast {
                 ast: AstCompareOp::Ne,
-                span: tok.span,
+                span: token.span,
             }),
-            (tok, _) => Err(ParserError {
-                span: tok.span,
+            (token, _) => Err(ParserError {
+                span: token.span,
                 kind: ParserErrorKind::UnexpectedToken {
-                    token_kind: tok.kind,
+                    token_kind: token.kind,
                     expects: Some(vec![
                         TokenKind::Lt,
                         TokenKind::Gt,
@@ -572,18 +572,18 @@ impl<'i, 'toks> Parser<'i, 'toks> {
 
     fn parse_const(&mut self) -> Result<'i, Ast<AstConst>> {
         match self.next_token().map(|t| (t, t.kind))? {
-            (tok, TokenKind::IntConst(value)) => Ok(Ast {
+            (token, TokenKind::IntConst(value)) => Ok(Ast {
                 ast: AstConst::Int(value),
-                span: tok.span,
+                span: token.span,
             }),
-            (tok, TokenKind::FloatConst(value)) => Ok(Ast {
+            (token, TokenKind::FloatConst(value)) => Ok(Ast {
                 ast: AstConst::Float(value),
-                span: tok.span,
+                span: token.span,
             }),
-            (tok, _) => Err(ParserError {
-                span: tok.span,
+            (token, _) => Err(ParserError {
+                span: token.span,
                 kind: ParserErrorKind::UnexpectedToken {
-                    token_kind: tok.kind,
+                    token_kind: token.kind,
                     expects: Some(vec![TokenKind::IntConst(0), TokenKind::FloatConst(0.0)]),
                 },
                 hints: vec![],
@@ -601,14 +601,14 @@ impl<'i, 'toks> Parser<'i, 'toks> {
 
     fn parse_ident(&mut self) -> Result<'i, Ast<AstIdent>> {
         match self.next_token().map(|t| (t, t.kind))? {
-            (tok, TokenKind::Ident(ident)) => Ok(Ast {
+            (token, TokenKind::Ident(ident)) => Ok(Ast {
                 ast: AstIdent(ident.to_string()),
-                span: tok.span,
+                span: token.span,
             }),
-            (tok, _) => Err(ParserError {
-                span: tok.span,
+            (token, _) => Err(ParserError {
+                span: token.span,
                 kind: ParserErrorKind::UnexpectedToken {
-                    token_kind: tok.kind,
+                    token_kind: token.kind,
                     expects: Some(vec![TokenKind::Ident("")]),
                 },
                 hints: vec![],
