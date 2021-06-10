@@ -1,5 +1,5 @@
 pub mod ast;
-pub mod interpreter;
+pub mod interp;
 pub mod lexer;
 pub mod parser;
 
@@ -9,7 +9,7 @@ pub enum Error<'a> {
     ParserError(parser::ParserError<'a>),
 
     #[error("runtime error: {0}")]
-    InterpreterError(interpreter::InterpreterError),
+    InterpError(interp::InterpError),
 }
 
 impl<'a> From<parser::ParserError<'a>> for Error<'a> {
@@ -18,9 +18,9 @@ impl<'a> From<parser::ParserError<'a>> for Error<'a> {
     }
 }
 
-impl<'a> From<interpreter::InterpreterError> for Error<'a> {
-    fn from(err: interpreter::InterpreterError) -> Self {
-        Self::InterpreterError(err)
+impl<'a> From<interp::InterpError> for Error<'a> {
+    fn from(err: interp::InterpError) -> Self {
+        Self::InterpError(err)
     }
 }
 
@@ -28,7 +28,7 @@ pub type Result<'a, T, E = Error<'a>> = std::result::Result<T, E>;
 
 #[cfg(test)]
 mod tests {
-    use crate::interpreter::run;
+    use crate::interp::run;
     use crate::lexer::tokenize;
     use crate::parser::parse;
 

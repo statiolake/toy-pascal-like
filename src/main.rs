@@ -1,7 +1,7 @@
 use itertools::Itertools as _;
 use once_cell::sync::Lazy;
-use pascal_like::interpreter::run;
-use pascal_like::interpreter::InterpreterError;
+use pascal_like::interp::run;
+use pascal_like::interp::InterpError;
 use pascal_like::lexer::{tokenize, Span};
 use pascal_like::parser::{parse, ParserError};
 use std::cmp::min;
@@ -115,7 +115,7 @@ fn print_parser_error(filename: &str, source: &str, err: &ParserError) {
     }
 }
 
-fn print_interpreter_error(filename: &str, source: &str, err: &InterpreterError) {
+fn print_interpreter_error(filename: &str, source: &str, err: &InterpError) {
     eprint!(&*COLOR_ERROR => "runtime error:");
     eprint!(" ");
     eprintln!(&*COLOR_MESSAGE => "{}", err.kind);

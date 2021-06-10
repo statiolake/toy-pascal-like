@@ -8,17 +8,17 @@ use std::cmp::{PartialEq, PartialOrd};
 use std::collections::{HashMap, HashSet};
 use std::{fmt, io};
 
-pub type Result<T, E = InterpreterError> = std::result::Result<T, E>;
+pub type Result<T, E = InterpError> = std::result::Result<T, E>;
 
 #[derive(thiserror::Error, Debug)]
 #[error("{span}: {kind}")]
-pub struct InterpreterError {
+pub struct InterpError {
     pub span: Span,
-    pub kind: InterpreterErrorKind,
+    pub kind: InterpErrorKind,
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum InterpreterErrorKind {
+pub enum InterpErrorKind {
     #[error("undeclared function: `{}`", name)]
     UndeclaredFunction { name: String },
 
@@ -56,28 +56,28 @@ pub enum InterpreterErrorKind {
     UnknownTy { name: String },
 }
 
-impl InterpreterErrorKind {
+impl InterpErrorKind {
     pub fn summary(&self) -> String {
         match self {
-            InterpreterErrorKind::UndeclaredFunction { .. } => "undeclared function".to_string(),
-            InterpreterErrorKind::ArityMismatch { .. } => "arity mismatch".to_string(),
-            InterpreterErrorKind::UndeclaredVariable { .. } => "undeclared variable".to_string(),
-            InterpreterErrorKind::AlreadyDeclaredFunction { .. } => {
+            InterpErrorKind::UndeclaredFunction { .. } => "undeclared function".to_string(),
+            InterpErrorKind::ArityMismatch { .. } => "arity mismatch".to_string(),
+            InterpErrorKind::UndeclaredVariable { .. } => "undeclared variable".to_string(),
+            InterpErrorKind::AlreadyDeclaredFunction { .. } => {
                 "function already declared".to_string()
             }
-            InterpreterErrorKind::AlreadyUsedParameterName { .. } => "already used".to_string(),
-            InterpreterErrorKind::NoReturnValue { .. } => "no return value".to_string(),
-            InterpreterErrorKind::TyMismatch { .. } => "type mismatch".to_string(),
-            InterpreterErrorKind::UnsupportedBinaryOperation { op, .. } => {
+            InterpErrorKind::AlreadyUsedParameterName { .. } => "already used".to_string(),
+            InterpErrorKind::NoReturnValue { .. } => "no return value".to_string(),
+            InterpErrorKind::TyMismatch { .. } => "type mismatch".to_string(),
+            InterpErrorKind::UnsupportedBinaryOperation { op, .. } => {
                 format!("{} not supported for this type", op)
             }
-            InterpreterErrorKind::UnknownTy { .. } => "unknown type".to_string(),
+            InterpErrorKind::UnknownTy { .. } => "unknown type".to_string(),
         }
     }
 
     pub fn hints(&self) -> Vec<String> {
         match self {
-            InterpreterErrorKind::NoReturnValue { fnname } => vec![
+            InterpErrorKind::NoReturnValue { fnname } => vec![
                 format!(
                     concat!(
                         "you can specify the return value by assigning it",
@@ -151,9 +151,9 @@ impl<'a> Function<'a> {
     pub fn call(&self, state: &State<'a>, span: Span, args: &[Arg]) -> Result<Value> {
         // arity check
         if self.params.len() != args.len() {
-            return Err(InterpreterError {
+            return Err(InterpError {
                 span,
-                kind: InterpreterErrorKind::ArityMismatch {
+                kind: InterpErrorKind::ArityMismatch {
                     name: self.name.clone(),
                     required: self.params.len(),
                     provided: args.len(),
@@ -165,9 +165,9 @@ impl<'a> Function<'a> {
         for (param, arg) in izip!(&self.params, args) {
             let arg_ty = arg.value.ty();
             if param.ty != arg_ty {
-                return Err(InterpreterError {
+                return Err(InterpError {
                     span: arg.span,
-                    kind: InterpreterErrorKind::TyMismatch {
+                    kind: InterpErrorKind::TyMismatch {
                         expected: param.ty,
                         actual: arg_ty,
                     },
@@ -218,9 +218,9 @@ impl Value {
     pub fn int(&self, span: Span) -> Result<i64> {
         match self {
             Value::Int(int) => Ok(*int),
-            _ => Err(InterpreterError {
+            _ => Err(InterpError {
                 span,
-                kind: InterpreterErrorKind::TyMismatch {
+                kind: InterpErrorKind::TyMismatch {
                     expected: ValueTy::Int,
                     actual: self.ty(),
                 },
@@ -231,9 +231,9 @@ impl Value {
     pub fn float(&self, span: Span) -> Result<f64> {
         match self {
             Value::Float(float) => Ok(*float),
-            _ => Err(InterpreterError {
+            _ => Err(InterpError {
                 span,
-                kind: InterpreterErrorKind::TyMismatch {
+                kind: InterpErrorKind::TyMismatch {
                     expected: ValueTy::Float,
                     actual: self.ty(),
                 },
@@ -376,9 +376,9 @@ impl<'a> State<'a> {
 
     fn register_func(&mut self, span: Span, func: Function<'a>) -> Result<()> {
         if let Some(old) = self.funcs.insert(func.name.clone(), func) {
-            Err(InterpreterError {
+            Err(InterpError {
                 span,
-                kind: InterpreterErrorKind::AlreadyDeclaredFunction { name: old.name },
+                kind: InterpErrorKind::AlreadyDeclaredFunction { name: old.name },
             })
         } else {
             Ok(())
@@ -394,9 +394,9 @@ impl<'a> State<'a> {
         self.vars
             .get(name)
             .map(Clone::clone)
-            .ok_or_else(|| InterpreterError {
+            .ok_or_else(|| InterpError {
                 span,
-                kind: InterpreterErrorKind::UndeclaredVariable {
+                kind: InterpErrorKind::UndeclaredVariable {
                     name: name.to_string(),
                 },
             })
@@ -428,9 +428,9 @@ impl<'a> State<'a> {
         let mut used = HashSet::new();
         for (param, _) in &params {
             if !used.insert(param.ast.ident()) {
-                return Err(InterpreterError {
+                return Err(InterpError {
                     span: param.span,
-                    kind: InterpreterErrorKind::AlreadyUsedParameterName {
+                    kind: InterpErrorKind::AlreadyUsedParameterName {
                         name: param.ast.ident().to_string(),
                     },
                 });
@@ -460,9 +460,9 @@ impl<'a> State<'a> {
                 inner_state.run_begin_stmt(&stmt.ast.body)?;
                 inner_state
                     .get_var(stmt.span, name)
-                    .map_err(|_| InterpreterError {
+                    .map_err(|_| InterpError {
                         span: stmt.span,
-                        kind: InterpreterErrorKind::NoReturnValue {
+                        kind: InterpErrorKind::NoReturnValue {
                             fnname: name.to_string(),
                         },
                     })
@@ -543,9 +543,9 @@ impl<'a> State<'a> {
             let rhs = rhs.float(expr.ast.rhs.span)?;
             Ok(compare(&expr.ast.op.ast, lhs, rhs))
         } else {
-            Err(InterpreterError {
+            Err(InterpError {
                 span: expr.ast.lhs.span,
-                kind: InterpreterErrorKind::UnsupportedBinaryOperation {
+                kind: InterpErrorKind::UnsupportedBinaryOperation {
                     op: expr.ast.op.ast.to_string(),
                     ty: lhs.ty(),
                 },
@@ -565,9 +565,9 @@ impl<'a> State<'a> {
                     let rhs = rhs.float($rhs.span)?;
                     Ok(Value::Float(lhs $op rhs))
                 } else {
-                    Err(InterpreterError {
+                    Err(InterpError {
                         span: $lhs.span,
-                        kind: InterpreterErrorKind::UnsupportedBinaryOperation {
+                        kind: InterpErrorKind::UnsupportedBinaryOperation {
                             op: stringify!($op).to_string(),
                             ty: lhs.ty(),
                         },
@@ -595,9 +595,9 @@ impl<'a> State<'a> {
                     let rhs = rhs.float($rhs.span)?;
                     Ok(Value::Float(lhs $op rhs))
                 } else {
-                    Err(InterpreterError {
+                    Err(InterpError {
                         span: $lhs.span,
-                        kind: InterpreterErrorKind::UnsupportedBinaryOperation {
+                        kind: InterpErrorKind::UnsupportedBinaryOperation {
                             op: stringify!($op).to_string(),
                             ty: lhs.ty(),
                         },
@@ -648,9 +648,9 @@ impl<'a> State<'a> {
             curr = &next.ast;
         }
 
-        let fnptr = self.funcs.get(ident).ok_or_else(|| InterpreterError {
+        let fnptr = self.funcs.get(ident).ok_or_else(|| InterpError {
             span: fncall.span,
-            kind: InterpreterErrorKind::UndeclaredFunction {
+            kind: InterpErrorKind::UndeclaredFunction {
                 name: ident.to_string(),
             },
         })?;
@@ -672,9 +672,9 @@ impl<'a> State<'a> {
         match ty.ast.ident() {
             "int" => Ok(ValueTy::Int),
             "float" => Ok(ValueTy::Float),
-            other => Err(InterpreterError {
+            other => Err(InterpError {
                 span: ty.span,
-                kind: InterpreterErrorKind::UnknownTy {
+                kind: InterpErrorKind::UnknownTy {
                     name: other.to_string(),
                 },
             }),
