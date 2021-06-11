@@ -508,14 +508,14 @@ impl<'a> State<'a> {
     fn run_assg_stmt(&mut self, stmt: &'a Ast<AstAssgStmt>) -> Result<()> {
         let name = stmt.ast.var.ast.ident();
         let value = self.eval_arith_expr(&stmt.ast.expr)?;
-        self.assign_to_var(stmt.span, name, value)?;
+        self.assign_to_var(stmt.span, name.ast.ident(), value)?;
 
         Ok(())
     }
 
     fn run_dump_stmt(&mut self, stmt: &'a Ast<AstDumpStmt>) -> Result<()> {
         let name = stmt.ast.var.ast.ident();
-        let value = self.get_var(stmt.span, name)?;
+        let value = self.get_var(stmt.span, name.ast.ident())?;
         println!("dump: {} = {}", name, value);
 
         Ok(())
@@ -625,7 +625,7 @@ impl<'a> State<'a> {
 
     fn eval_primary_expr(&mut self, expr: &'a Ast<AstPrimaryExpr>) -> Result<Value> {
         match &expr.ast {
-            AstPrimaryExpr::Var(var) => self.get_var(expr.span, var.ast.ident()),
+            AstPrimaryExpr::Var(var) => self.get_var(expr.span, var.ast.ident().ast.ident()),
             AstPrimaryExpr::Const(value) => self.eval_const(value),
             AstPrimaryExpr::FnCall(fncall) => self.eval_fncall(fncall),
             AstPrimaryExpr::Paren(expr) => self.eval_arith_expr(expr),
@@ -669,7 +669,7 @@ impl<'a> State<'a> {
     }
 
     fn resolve_ty(&mut self, ty: &'a Ast<AstTy>) -> Result<ValueTy> {
-        match ty.ast.ident() {
+        match ty.ast.ident().ast.ident() {
             "int" => Ok(ValueTy::Int),
             "float" => Ok(ValueTy::Float),
             other => Err(InterpError {
