@@ -123,7 +123,8 @@ impl Resolver {
         }
 
         fn resolve_primitive(ty: &Ty) -> Result<()> {
-            if let ResolveStatus::Unresolved(name) = ty.res.borrow().clone() {
+            let cloned = ty.res.borrow().clone();
+            if let ResolveStatus::Unresolved(name) = cloned {
                 match &*name.ident {
                     "int" => *ty.res.borrow_mut() = ResolveStatus::Resolved(TyKind::Int),
                     "float" => *ty.res.borrow_mut() = ResolveStatus::Resolved(TyKind::Float),
@@ -282,7 +283,8 @@ impl Resolver {
                 hir_visit::visit_fncall(self, fncall);
                 stop_if_err!(self.err);
 
-                if let ResolveStatus::Unresolved(name) = fncall.res.borrow().clone() {
+                let cloned = fncall.res.borrow().clone();
+                if let ResolveStatus::Unresolved(name) = cloned {
                     let fndecl = self
                         .prog
                         .fndecls
