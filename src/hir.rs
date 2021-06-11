@@ -33,6 +33,8 @@ pub fn lower_ast(stmt: &Ast<AstStmt>) -> Result<Program> {
     Ok(Program {
         scopes: lctx.scopes,
         start_fn,
+        fndecls: lctx.fndecls,
+        fnbodies: lctx.fnbodies,
     })
 }
 
@@ -73,10 +75,10 @@ impl Default for ItemIdGenerator {
 
 #[derive(Debug)]
 pub struct Program {
-    scopes: HashMap<ScopeId, Scope>,
-
-    /// The entry point of this program
-    start_fn: ItemId,
+    pub scopes: HashMap<ScopeId, Scope>,
+    pub start_fn: ItemId,
+    pub fndecls: HashMap<ItemId, FnDecl>,
+    pub fnbodies: HashMap<ItemId, FnBody>,
 }
 
 #[derive(Debug)]
@@ -89,15 +91,12 @@ pub struct Scope {
     /// None means this is a root scope
     parent: Option<ScopeId>,
 
-    /// Function declerations in the scope
+    /// IDs of functions declared in this scope
     ///
     /// Only functions exactly in this scope. In other words, it's not related to the visibility:
     /// functions in the parent scope is actually visible in the child scopes, but they will not be
     /// listed in here.
-    fndecls: HashMap<ItemId, FnDecl>,
-
-    /// Function bodies in the scope
-    fnbodies: HashMap<ItemId, FnBody>,
+    fnids: Vec<ItemId>,
 }
 
 impl Scope {
@@ -105,8 +104,7 @@ impl Scope {
         Scope {
             id,
             parent,
-            fndecls: HashMap::new(),
-            fnbodies: HashMap::new(),
+            fnids: Vec::new(),
         }
     }
 }
@@ -335,6 +333,8 @@ pub struct FnCall {
 
 struct LoweringContext {
     scopes: HashMap<ScopeId, Scope>,
+    fndecls: HashMap<ItemId, FnDecl>,
+    fnbodies: HashMap<ItemId, FnBody>,
     id_gen: ItemIdGenerator,
 }
 
@@ -347,7 +347,12 @@ impl LoweringContext {
         let root_scope = Scope::new(id_root_scope, None);
 
         let scopes = hashmap! { id_root_scope => root_scope };
-        let lctx = Self { scopes, id_gen };
+        let lctx = Self {
+            scopes,
+            fndecls: HashMap::new(),
+            fnbodies: HashMap::new(),
+            id_gen,
+        };
 
         (lctx, id_root_scope)
     }
@@ -379,7 +384,12 @@ impl LoweringContext {
         };
 
         // register this FnDecl
-        self.scope_mut(curr_scope).fndecls.insert(id_new_fn, new_fn);
+        assert!(
+            self.fndecls.insert(id_new_fn, new_fn).is_none(),
+            "ID conflict for function {:?}",
+            id_new_fn
+        );
+        self.scope_mut(curr_scope).fnids.push(id_new_fn);
 
         let new_scope = Scope::new(id_new_scope, Some(curr_scope));
         self.scopes.insert(id_new_scope, new_scope);
@@ -388,8 +398,13 @@ impl LoweringContext {
     }
 
     fn register_fnbody(&mut self, curr_scope: ScopeId, reg_fn: ItemId, body: FnBody) -> Result<()> {
-        // TODO: error handling (already defined function)
-        self.scope_mut(curr_scope).fnbodies.insert(reg_fn, body);
+        self.fnbodies.insert(reg_fn, body);
+        debug_assert!(
+            self.scope_mut(curr_scope).fnids.contains(&reg_fn),
+            "function body of undeclared function ({:?}) is registered",
+            reg_fn
+        );
+
         Ok(())
     }
 
