@@ -42,9 +42,9 @@ impl ParserErrorKind<'_> {
     }
 }
 
-pub fn parse<'i>(tokens: &[Token<'i>]) -> Result<'i, Ast<AstStmt>> {
+pub fn parse<'i>(tokens: &[Token<'i>]) -> Result<'i, Ast<AstBeginStmt>> {
     let mut parser = Parser::new(tokens);
-    let stmt = parser.parse_stmt()?;
+    let stmt = parser.parse_begin_stmt()?;
     if let Some(span_left_tokens) = parser.span_left_tokens() {
         return Err(ParserError {
             span: span_left_tokens,

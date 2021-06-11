@@ -119,7 +119,7 @@ fn print_parser_error(filename: &str, source: &str, err: &ParserError) {
 }
 
 fn print_resolver_error(filename: &str, source: &str, err: &ResolverError) {
-    eprint!(&*COLOR_ERROR => "runtime error:");
+    eprint!(&*COLOR_ERROR => "resolver error:");
     eprint!(" ");
     eprintln!(&*COLOR_MESSAGE => "{}", err.kind);
     show_span(filename, source, err.span, &err.kind.summary());
@@ -172,6 +172,9 @@ fn main() {
     println!();
 
     let hir = lower_ast(&ast);
+    println!("--- hir ---");
+    println!("{:#?}", hir);
+
     let thir = match resolve_progam(hir) {
         Ok(resolved) => resolved,
         Err(err) => {
@@ -180,7 +183,7 @@ fn main() {
         }
     };
     println!("--- typed hir ---");
-    println!("{:?}", thir);
+    println!("{:#?}", thir);
 
     println!("--- run ---");
     let state = match run(&ast) {

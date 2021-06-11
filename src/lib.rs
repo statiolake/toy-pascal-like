@@ -101,7 +101,7 @@ end
 
     #[test]
     fn natural_arith() {
-        let source = r#"x := (1 + 2) * 3 - (4 + 5) + (-6 * (7 + 8)) / -9 + -10"#;
+        let source = r#"begin x := (1 + 2) * 3 - (4 + 5) + (-6 * (7 + 8)) / -9 + -10 end"#;
         let tokens = tokenize(source);
         let ast = parse(&tokens).expect("it should parse");
         let state = run(&ast).expect("it should run");

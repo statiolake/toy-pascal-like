@@ -92,9 +92,9 @@ impl InterpErrorKind {
     }
 }
 
-pub fn run(stmt: &Ast<AstStmt>) -> Result<State> {
+pub fn run(stmt: &Ast<AstBeginStmt>) -> Result<State> {
     let mut state = State::defaultenv();
-    state.run_stmt(stmt)?;
+    state.run_begin_stmt(stmt)?;
     Ok(state)
 }
 

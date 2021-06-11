@@ -7,7 +7,7 @@ use std::fmt;
 
 const SCRIPT_ROOT_FN_NAME: &str = "__start";
 
-pub fn lower_ast(stmt: &Ast<AstStmt>) -> Program {
+pub fn lower_ast(stmt: &Ast<AstBeginStmt>) -> Program {
     let (mut lctx, root_scope) = LoweringContext::new();
 
     // register script root function
@@ -26,7 +26,15 @@ pub fn lower_ast(stmt: &Ast<AstStmt>) -> Program {
     );
 
     // lower the entire statement
-    lctx.lower_stmt(start_fn, start_scope, stmt);
+    let stmt = lctx.lower_begin_stmt(start_fn, start_scope, stmt);
+
+    lctx.register_fnbody(
+        root_scope,
+        start_fn,
+        FnBody {
+            stmt: Box::new(stmt),
+        },
+    );
 
     Program {
         scopes: lctx.scopes,
@@ -439,12 +447,14 @@ impl LoweringContext {
 
     fn lower_stmt(&mut self, curr_fn: ItemId, curr_scope: ScopeId, stmt: &Ast<AstStmt>) -> Stmt {
         let lowered = match &stmt.ast {
-            AstStmt::FuncdefStmt(s) => StmtKind::FnDef(self.lower_fndef(curr_fn, curr_scope, s)),
-            AstStmt::IfStmt(s) => StmtKind::If(self.lower_if(curr_fn, curr_scope, s)),
-            AstStmt::WhileStmt(s) => StmtKind::While(self.lower_while(curr_fn, curr_scope, s)),
-            AstStmt::BeginStmt(s) => StmtKind::Begin(self.lower_begin(curr_fn, curr_scope, s)),
-            AstStmt::AssgStmt(s) => StmtKind::Assg(self.lower_assg(curr_fn, curr_scope, s)),
-            AstStmt::DumpStmt(s) => StmtKind::Dump(self.lower_dump(curr_fn, curr_scope, s)),
+            AstStmt::FuncdefStmt(s) => {
+                StmtKind::FnDef(self.lower_fndef_stmt(curr_fn, curr_scope, s))
+            }
+            AstStmt::IfStmt(s) => StmtKind::If(self.lower_if_stmt(curr_fn, curr_scope, s)),
+            AstStmt::WhileStmt(s) => StmtKind::While(self.lower_while_stmt(curr_fn, curr_scope, s)),
+            AstStmt::BeginStmt(s) => StmtKind::Begin(self.lower_begin_stmt(curr_fn, curr_scope, s)),
+            AstStmt::AssgStmt(s) => StmtKind::Assg(self.lower_assg_stmt(curr_fn, curr_scope, s)),
+            AstStmt::DumpStmt(s) => StmtKind::Dump(self.lower_dump_stmt(curr_fn, curr_scope, s)),
         };
 
         Stmt {
@@ -453,7 +463,7 @@ impl LoweringContext {
         }
     }
 
-    fn lower_fndef(
+    fn lower_fndef_stmt(
         &mut self,
         curr_fn: ItemId,
         curr_scope: ScopeId,
@@ -480,14 +490,19 @@ impl LoweringContext {
             self.register_fndecl(curr_scope, stmt.span, ident, params, ret_ty);
 
         let body = FnBody {
-            stmt: Box::new(self.lower_begin(new_fn, new_scope, &stmt.ast.body)),
+            stmt: Box::new(self.lower_begin_stmt(new_fn, new_scope, &stmt.ast.body)),
         };
         self.register_fnbody(curr_scope, new_fn, body);
 
         new_fn
     }
 
-    fn lower_if(&mut self, curr_fn: ItemId, curr_scope: ScopeId, stmt: &Ast<AstIfStmt>) -> IfStmt {
+    fn lower_if_stmt(
+        &mut self,
+        curr_fn: ItemId,
+        curr_scope: ScopeId,
+        stmt: &Ast<AstIfStmt>,
+    ) -> IfStmt {
         IfStmt {
             span: stmt.span,
             cond: Box::new(self.lower_bool_expr(curr_fn, curr_scope, &stmt.ast.cond)),
@@ -496,7 +511,7 @@ impl LoweringContext {
         }
     }
 
-    fn lower_while(
+    fn lower_while_stmt(
         &mut self,
         curr_fn: ItemId,
         curr_scope: ScopeId,
@@ -509,7 +524,7 @@ impl LoweringContext {
         }
     }
 
-    fn lower_begin(
+    fn lower_begin_stmt(
         &mut self,
         curr_fn: ItemId,
         curr_scope: ScopeId,
@@ -528,7 +543,7 @@ impl LoweringContext {
         }
     }
 
-    fn lower_assg(
+    fn lower_assg_stmt(
         &mut self,
         curr_fn: ItemId,
         curr_scope: ScopeId,
@@ -541,7 +556,7 @@ impl LoweringContext {
         }
     }
 
-    fn lower_dump(
+    fn lower_dump_stmt(
         &mut self,
         curr_fn: ItemId,
         curr_scope: ScopeId,
