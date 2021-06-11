@@ -46,7 +46,7 @@ pub fn lower_ast(stmt: &Ast<AstBeginStmt>) -> Program {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ItemId(usize);
+pub struct FnId(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ScopeId(usize);
@@ -61,10 +61,10 @@ impl ItemIdGenerator {
         Self { current: 0 }
     }
 
-    pub fn gen_item(&mut self) -> ItemId {
+    pub fn gen_fn(&mut self) -> FnId {
         let id = self.current;
         self.current += 1;
-        ItemId(id)
+        FnId(id)
     }
 
     pub fn gen_scope(&mut self) -> ScopeId {
@@ -83,9 +83,9 @@ impl Default for ItemIdGenerator {
 #[derive(Debug)]
 pub struct Program {
     pub scopes: BTreeMap<ScopeId, Scope>,
-    pub start_fn: ItemId,
-    pub fndecls: BTreeMap<ItemId, FnDecl>,
-    pub fnbodies: BTreeMap<ItemId, FnBody>,
+    pub start_fn: FnId,
+    pub fndecls: BTreeMap<FnId, FnDecl>,
+    pub fnbodies: BTreeMap<FnId, FnBody>,
 }
 
 impl Program {
@@ -95,13 +95,13 @@ impl Program {
             .unwrap_or_else(|| panic!("scope {:?} not registered", id))
     }
 
-    pub fn fndecl(&self, id: ItemId) -> &FnDecl {
+    pub fn fndecl(&self, id: FnId) -> &FnDecl {
         self.fndecls
             .get(&id)
             .unwrap_or_else(|| panic!("function {:?} not registered", id))
     }
 
-    pub fn fnbody(&self, id: ItemId) -> &FnBody {
+    pub fn fnbody(&self, id: FnId) -> &FnBody {
         self.fnbodies
             .get(&id)
             .unwrap_or_else(|| panic!("function {:?} not registered", id))
@@ -113,13 +113,13 @@ impl Program {
             .unwrap_or_else(|| panic!("scope {:?} not registered", id))
     }
 
-    pub fn fndecl_mut(&mut self, id: ItemId) -> &mut FnDecl {
+    pub fn fndecl_mut(&mut self, id: FnId) -> &mut FnDecl {
         self.fndecls
             .get_mut(&id)
             .unwrap_or_else(|| panic!("function {:?} not registered", id))
     }
 
-    pub fn fnbody_mut(&mut self, id: ItemId) -> &mut FnBody {
+    pub fn fnbody_mut(&mut self, id: FnId) -> &mut FnBody {
         self.fnbodies
             .get_mut(&id)
             .unwrap_or_else(|| panic!("function {:?} not registered", id))
@@ -141,7 +141,7 @@ pub struct Scope {
     /// Only functions exactly in this scope. In other words, it's not related to the visibility:
     /// functions in the parent scope is actually visible in the child scopes, but they will not be
     /// listed in here.
-    pub fn_ids: Vec<ItemId>,
+    pub fn_ids: Vec<FnId>,
 }
 
 impl Scope {
@@ -157,7 +157,7 @@ impl Scope {
 #[derive(Debug)]
 pub struct FnDecl {
     /// ID for this function
-    pub id: ItemId,
+    pub id: FnId,
 
     /// Scope which this function is in. Not what this function creates inside it.
     pub scope: ScopeId,
@@ -171,7 +171,7 @@ pub struct FnDecl {
 #[derive(Debug)]
 pub struct FnDef {
     /// ID for this function
-    pub id: ItemId,
+    pub id: FnId,
 
     /// Scope which this function created. Not where this function is placed.
     pub scope_inside: ScopeId,
@@ -224,7 +224,7 @@ impl fmt::Display for TyKind {
 
 #[derive(Debug)]
 pub struct FnBody {
-    pub id: ItemId,
+    pub id: FnId,
     pub stmt: Box<BeginStmt>,
 }
 
@@ -236,7 +236,7 @@ pub struct Stmt {
 
 #[derive(Debug)]
 pub enum StmtKind {
-    FnDef(ItemId),
+    FnDef(FnId),
     If(IfStmt),
     While(WhileStmt),
     Begin(BeginStmt),
@@ -368,14 +368,14 @@ pub enum Value {
 pub struct FnCall {
     pub span: Span,
     pub span_name: Span,
-    pub res: RefCell<ResolveStatus<ItemId>>,
+    pub res: RefCell<ResolveStatus<FnId>>,
     pub args: Vec<ArithExpr>,
 }
 
 struct LoweringContext {
     scopes: BTreeMap<ScopeId, Scope>,
-    fndecls: BTreeMap<ItemId, FnDecl>,
-    fnbodies: BTreeMap<ItemId, FnBody>,
+    fndecls: BTreeMap<FnId, FnDecl>,
+    fnbodies: BTreeMap<FnId, FnBody>,
     id_gen: ItemIdGenerator,
 }
 
@@ -411,9 +411,9 @@ impl LoweringContext {
         name: Ident,
         params: Vec<Param>,
         ret_ty: Ty,
-    ) -> (ItemId, ScopeId) {
+    ) -> (FnId, ScopeId) {
         // Prepare function
-        let id_new_fn = self.id_gen.gen_item();
+        let id_new_fn = self.id_gen.gen_fn();
         let id_new_scope = self.id_gen.gen_scope();
         let new_fn = FnDecl {
             id: id_new_fn,
@@ -438,7 +438,7 @@ impl LoweringContext {
         (id_new_fn, id_new_scope)
     }
 
-    fn register_fnbody(&mut self, curr_scope: ScopeId, reg_fn: ItemId, body: FnBody) {
+    fn register_fnbody(&mut self, curr_scope: ScopeId, reg_fn: FnId, body: FnBody) {
         self.fnbodies.insert(reg_fn, body);
         debug_assert!(
             self.scope_mut(curr_scope).fn_ids.contains(&reg_fn),
@@ -447,7 +447,7 @@ impl LoweringContext {
         );
     }
 
-    fn lower_stmt(&mut self, curr_fn: ItemId, curr_scope: ScopeId, stmt: &Ast<AstStmt>) -> Stmt {
+    fn lower_stmt(&mut self, curr_fn: FnId, curr_scope: ScopeId, stmt: &Ast<AstStmt>) -> Stmt {
         let lowered = match &stmt.ast {
             AstStmt::FuncdefStmt(s) => {
                 StmtKind::FnDef(self.lower_fndef_stmt(curr_fn, curr_scope, s))
@@ -467,10 +467,10 @@ impl LoweringContext {
 
     fn lower_fndef_stmt(
         &mut self,
-        curr_fn: ItemId,
+        curr_fn: FnId,
         curr_scope: ScopeId,
         stmt: &Ast<AstFuncdefStmt>,
-    ) -> ItemId {
+    ) -> FnId {
         let mut params = vec![];
         let mut curr_param = &*stmt.ast.params;
         while let Ast {
@@ -502,7 +502,7 @@ impl LoweringContext {
 
     fn lower_if_stmt(
         &mut self,
-        curr_fn: ItemId,
+        curr_fn: FnId,
         curr_scope: ScopeId,
         stmt: &Ast<AstIfStmt>,
     ) -> IfStmt {
@@ -516,7 +516,7 @@ impl LoweringContext {
 
     fn lower_while_stmt(
         &mut self,
-        curr_fn: ItemId,
+        curr_fn: FnId,
         curr_scope: ScopeId,
         stmt: &Ast<AstWhileStmt>,
     ) -> WhileStmt {
@@ -529,7 +529,7 @@ impl LoweringContext {
 
     fn lower_begin_stmt(
         &mut self,
-        curr_fn: ItemId,
+        curr_fn: FnId,
         curr_scope: ScopeId,
         stmt: &Ast<AstBeginStmt>,
     ) -> BeginStmt {
@@ -548,7 +548,7 @@ impl LoweringContext {
 
     fn lower_assg_stmt(
         &mut self,
-        curr_fn: ItemId,
+        curr_fn: FnId,
         curr_scope: ScopeId,
         stmt: &Ast<AstAssgStmt>,
     ) -> AssgStmt {
@@ -561,7 +561,7 @@ impl LoweringContext {
 
     fn lower_dump_stmt(
         &mut self,
-        curr_fn: ItemId,
+        curr_fn: FnId,
         curr_scope: ScopeId,
         stmt: &Ast<AstDumpStmt>,
     ) -> DumpStmt {
@@ -573,7 +573,7 @@ impl LoweringContext {
 
     fn lower_bool_expr(
         &mut self,
-        curr_fn: ItemId,
+        curr_fn: FnId,
         curr_scope: ScopeId,
         expr: &Ast<AstBoolExpr>,
     ) -> BoolExpr {
@@ -587,7 +587,7 @@ impl LoweringContext {
 
     fn lower_compare_op(
         &mut self,
-        _curr_fn: ItemId,
+        _curr_fn: FnId,
         _curr_scope: ScopeId,
         op: &Ast<AstCompareOp>,
     ) -> CompareOp {
@@ -608,7 +608,7 @@ impl LoweringContext {
 
     fn lower_arith_expr(
         &mut self,
-        curr_fn: ItemId,
+        curr_fn: FnId,
         curr_scope: ScopeId,
         expr: &Ast<AstArithExpr>,
     ) -> ArithExpr {
@@ -640,7 +640,7 @@ impl LoweringContext {
 
     fn lower_mul_expr(
         &mut self,
-        curr_fn: ItemId,
+        curr_fn: FnId,
         curr_scope: ScopeId,
         expr: &Ast<AstMulExpr>,
     ) -> ArithExpr {
@@ -672,7 +672,7 @@ impl LoweringContext {
 
     fn lower_unary_expr(
         &mut self,
-        curr_fn: ItemId,
+        curr_fn: FnId,
         curr_scope: ScopeId,
         expr: &Ast<AstUnaryExpr>,
     ) -> ArithExpr {
@@ -703,7 +703,7 @@ impl LoweringContext {
 
     fn lower_primary_expr(
         &mut self,
-        curr_fn: ItemId,
+        curr_fn: FnId,
         curr_scope: ScopeId,
         expr: &Ast<AstPrimaryExpr>,
     ) -> PrimaryExpr {
@@ -732,7 +732,7 @@ impl LoweringContext {
 
     fn lower_fncall(
         &mut self,
-        curr_fn: ItemId,
+        curr_fn: FnId,
         curr_scope: ScopeId,
         call: &Ast<AstFnCall>,
     ) -> FnCall {
@@ -759,12 +759,7 @@ impl LoweringContext {
         }
     }
 
-    fn lower_const(
-        &mut self,
-        _curr_fn: ItemId,
-        _curr_scope: ScopeId,
-        cst: &Ast<AstConst>,
-    ) -> Const {
+    fn lower_const(&mut self, _curr_fn: FnId, _curr_scope: ScopeId, cst: &Ast<AstConst>) -> Const {
         let (ty, value) = match &cst.ast {
             AstConst::Int(v) => (
                 Ty {
@@ -788,7 +783,7 @@ impl LoweringContext {
         }
     }
 
-    fn lower_var(&mut self, curr_fn: ItemId, curr_scope: ScopeId, var: &Ast<AstVar>) -> Var {
+    fn lower_var(&mut self, curr_fn: FnId, curr_scope: ScopeId, var: &Ast<AstVar>) -> Var {
         Var {
             span: var.span,
             ty: Ty {
@@ -799,7 +794,7 @@ impl LoweringContext {
         }
     }
 
-    fn lower_ty(&mut self, curr_fn: ItemId, curr_scope: ScopeId, ty: &Ast<AstTy>) -> Ty {
+    fn lower_ty(&mut self, curr_fn: FnId, curr_scope: ScopeId, ty: &Ast<AstTy>) -> Ty {
         Ty {
             span: ty.span,
             res: RefCell::new(ResolveStatus::Unresolved(self.lower_ident(
@@ -812,7 +807,7 @@ impl LoweringContext {
 
     fn lower_ident(
         &mut self,
-        _curr_fn: ItemId,
+        _curr_fn: FnId,
         _curr_scope: ScopeId,
         ident: &Ast<AstIdent>,
     ) -> Ident {
