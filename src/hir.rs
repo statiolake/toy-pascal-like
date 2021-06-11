@@ -256,36 +256,22 @@ pub struct ArithExpr {
 
 #[derive(Debug)]
 pub enum ArithExprKind {
-    MulExpr(Box<MulExpr>),
-    Add(Box<ArithExpr>, Box<MulExpr>),
-    Sub(Box<ArithExpr>, Box<MulExpr>),
+    Primary(Box<PrimaryExpr>),
+    UnaryOp(UnaryOp, Box<ArithExpr>),
+    BinOp(BinOp, Box<ArithExpr>, Box<ArithExpr>),
 }
 
 #[derive(Debug)]
-pub struct MulExpr {
-    span: Span,
-    ty: Ty,
-    kind: MulExprKind,
+pub enum UnaryOp {
+    Neg,
 }
 
 #[derive(Debug)]
-pub enum MulExprKind {
-    UnaryExpr(Box<UnaryExpr>),
-    Mul(Box<MulExpr>, Box<UnaryExpr>),
-    Div(Box<MulExpr>, Box<UnaryExpr>),
-}
-
-#[derive(Debug)]
-pub struct UnaryExpr {
-    span: Span,
-    ty: Ty,
-    kind: UnaryExprKind,
-}
-
-#[derive(Debug)]
-pub enum UnaryExprKind {
-    PrimaryExpr(Box<PrimaryExpr>),
-    Neg(Box<UnaryExpr>),
+pub enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
 }
 
 #[derive(Debug)]
@@ -582,26 +568,30 @@ impl LoweringContext {
         curr_scope: ScopeId,
         expr: &Ast<AstArithExpr>,
     ) -> Result<ArithExpr> {
-        Ok(ArithExpr {
-            span: expr.span,
-            ty: Ty {
-                span: expr.span,
-                res: ResolveStatus::Unknown,
-            },
-            kind: match &expr.ast {
-                AstArithExpr::MulExpr(e) => {
-                    ArithExprKind::MulExpr(Box::new(self.lower_mul_expr(curr_fn, curr_scope, e)?))
-                }
-                AstArithExpr::Add(l, r) => ArithExprKind::Add(
+        match &expr.ast {
+            AstArithExpr::MulExpr(e) => self.lower_mul_expr(curr_fn, curr_scope, e),
+            AstArithExpr::Add(l, r) | AstArithExpr::Sub(l, r) => {
+                let op = match &expr.ast {
+                    AstArithExpr::MulExpr(_) => unreachable!(),
+                    AstArithExpr::Add(_, _) => BinOp::Add,
+                    AstArithExpr::Sub(_, _) => BinOp::Sub,
+                };
+                let kind = ArithExprKind::BinOp(
+                    op,
                     Box::new(self.lower_arith_expr(curr_fn, curr_scope, l)?),
                     Box::new(self.lower_mul_expr(curr_fn, curr_scope, r)?),
-                ),
-                AstArithExpr::Sub(l, r) => ArithExprKind::Sub(
-                    Box::new(self.lower_arith_expr(curr_fn, curr_scope, l)?),
-                    Box::new(self.lower_mul_expr(curr_fn, curr_scope, r)?),
-                ),
-            },
-        })
+                );
+
+                Ok(ArithExpr {
+                    span: expr.span,
+                    kind,
+                    ty: Ty {
+                        span: expr.span,
+                        res: ResolveStatus::Unknown,
+                    },
+                })
+            }
+        }
     }
 
     fn lower_mul_expr(
@@ -609,27 +599,31 @@ impl LoweringContext {
         curr_fn: ItemId,
         curr_scope: ScopeId,
         expr: &Ast<AstMulExpr>,
-    ) -> Result<MulExpr> {
-        Ok(MulExpr {
-            span: expr.span,
-            ty: Ty {
-                span: expr.span,
-                res: ResolveStatus::Unknown,
-            },
-            kind: match &expr.ast {
-                AstMulExpr::UnaryExpr(e) => MulExprKind::UnaryExpr({
-                    Box::new(self.lower_unary_expr(curr_fn, curr_scope, &e)?)
-                }),
-                AstMulExpr::Mul(l, r) => MulExprKind::Mul(
+    ) -> Result<ArithExpr> {
+        match &expr.ast {
+            AstMulExpr::UnaryExpr(e) => self.lower_unary_expr(curr_fn, curr_scope, e),
+            AstMulExpr::Mul(l, r) | AstMulExpr::Div(l, r) => {
+                let op = match &expr.ast {
+                    AstMulExpr::UnaryExpr(_) => unreachable!(),
+                    AstMulExpr::Mul(_, _) => BinOp::Mul,
+                    AstMulExpr::Div(_, _) => BinOp::Div,
+                };
+                let kind = ArithExprKind::BinOp(
+                    op,
                     Box::new(self.lower_mul_expr(curr_fn, curr_scope, l)?),
                     Box::new(self.lower_unary_expr(curr_fn, curr_scope, r)?),
-                ),
-                AstMulExpr::Div(l, r) => MulExprKind::Div(
-                    Box::new(self.lower_mul_expr(curr_fn, curr_scope, l)?),
-                    Box::new(self.lower_unary_expr(curr_fn, curr_scope, r)?),
-                ),
-            },
-        })
+                );
+
+                Ok(ArithExpr {
+                    span: expr.span,
+                    kind,
+                    ty: Ty {
+                        span: expr.span,
+                        res: ResolveStatus::Unknown,
+                    },
+                })
+            }
+        }
     }
 
     fn lower_unary_expr(
@@ -637,20 +631,28 @@ impl LoweringContext {
         curr_fn: ItemId,
         curr_scope: ScopeId,
         expr: &Ast<AstUnaryExpr>,
-    ) -> Result<UnaryExpr> {
-        Ok(UnaryExpr {
-            span: expr.span,
-            ty: Ty {
+    ) -> Result<ArithExpr> {
+        Ok(match &expr.ast {
+            AstUnaryExpr::PrimaryExpr(e) => ArithExpr {
                 span: expr.span,
-                res: ResolveStatus::Unknown,
-            },
-            kind: match &expr.ast {
-                AstUnaryExpr::PrimaryExpr(e) => UnaryExprKind::PrimaryExpr(Box::new(
+                ty: Ty {
+                    span: expr.span,
+                    res: ResolveStatus::Unknown,
+                },
+                kind: ArithExprKind::Primary(Box::new(
                     self.lower_primary_expr(curr_fn, curr_scope, &e)?,
                 )),
-                AstUnaryExpr::Neg(e) => {
-                    UnaryExprKind::Neg(Box::new(self.lower_unary_expr(curr_fn, curr_scope, &e)?))
-                }
+            },
+            AstUnaryExpr::Neg(e) => ArithExpr {
+                span: expr.span,
+                ty: Ty {
+                    span: expr.span,
+                    res: ResolveStatus::Unknown,
+                },
+                kind: ArithExprKind::UnaryOp(
+                    UnaryOp::Neg,
+                    Box::new(self.lower_unary_expr(curr_fn, curr_scope, &e)?),
+                ),
             },
         })
     }
