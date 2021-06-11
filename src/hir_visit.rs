@@ -79,6 +79,11 @@ pub fn visit_all<V: Visit + ?Sized>(v: &mut V, prog: &Program) {
         for &fn_id in &prog.scope(scope).fn_ids {
             let fndecl = prog.fndecl(fn_id);
             v.visit_fndecl(fndecl);
+        }
+    }
+
+    for &scope in prog.scopes.keys() {
+        for &fn_id in &prog.scope(scope).fn_ids {
             let fnbody = prog.fnbody(fn_id);
             v.visit_fnbody(fnbody);
         }
