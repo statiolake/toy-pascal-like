@@ -13,19 +13,23 @@ pub struct ResolverError {
 
 #[derive(thiserror::Error, Debug)]
 pub enum ResolverErrorKind {
-    #[error("undeclared function: {ident}")]
+    #[error("undeclared function: `{ident}`")]
     UndeclaredFunction { ident: String },
 
-    #[error("undeclared variable: {ident}")]
+    #[error("undeclared variable: `{ident}`")]
     UndeclaredVariable { ident: String },
 
-    #[error("unknown type: {ident}")]
+    #[error("unknown type: `{ident}`")]
     UnknownTy { ident: String },
+
+    // When two parameters are the same name, etc.
+    #[error("already defined variable: `{ident}`")]
+    AlreadyDefinedVariable { ident: String },
 
     #[error("could not determine the type")]
     InferFailure,
 
-    #[error("type mismatch: expected {expected} but found {found}")]
+    #[error("type mismatch: expected `{expected}` but found `{found}`")]
     TyMismatch { expected: TyKind, found: TyKind },
 }
 
@@ -35,9 +39,10 @@ impl ResolverErrorKind {
             ResolverErrorKind::UndeclaredFunction { .. } => "unknown function name".to_string(),
             ResolverErrorKind::UndeclaredVariable { .. } => "unknown variable name".to_string(),
             ResolverErrorKind::UnknownTy { .. } => "unknown type".to_string(),
+            &ResolverErrorKind::AlreadyDefinedVariable { .. } => "already defined".to_string(),
             ResolverErrorKind::InferFailure => "could not infer the type of this".to_string(),
             ResolverErrorKind::TyMismatch { expected, found } => {
-                format!("expected: {}, found: {}", expected, found)
+                format!("expected `{}`, found `{}`", expected, found)
             }
         }
     }
@@ -152,8 +157,36 @@ impl Resolver {
 
             fn visit_fnbody(&mut self, fnbody: &FnBody) {
                 stop_if_err!(self.err);
+
                 // set up new local variable tables
                 self.locals = BTreeMap::new();
+
+                // args and return values should be registered to the local table.
+                let fndecl = self.prog.fndecl(fnbody.id);
+                let local = (
+                    fndecl.name.span,
+                    unwrap_resolved!(fndecl.ret_ty.res.borrow()).clone(),
+                );
+                self.locals.insert(fndecl.name.ident.clone(), local);
+                for param in &fndecl.params {
+                    let local = (
+                        param.name.span,
+                        unwrap_resolved!(param.ty.res.borrow()).clone(),
+                    );
+                    let old = self.locals.insert(param.name.ident.clone(), local);
+                    if old.is_some() {
+                        return_err!(
+                            self,
+                            ResolverError {
+                                span: param.name.span,
+                                kind: ResolverErrorKind::AlreadyDefinedVariable {
+                                    ident: param.name.ident.clone(),
+                                }
+                            }
+                        );
+                    }
+                }
+
                 hir_visit::visit_fnbody(self, fnbody);
                 stop_if_err!(self.err);
             }
@@ -180,7 +213,9 @@ impl Resolver {
                     .or_insert_with(|| (stmt.var.span, ty_expr.clone()));
                 let ty_var = ty_var.clone();
 
-                if ty_var != ty_expr {
+                if ty_var == ty_expr {
+                    *stmt.var.ty.res.borrow_mut() = ResolveStatus::Resolved(ty_var);
+                } else {
                     return_err!(
                         self,
                         ResolverError {
@@ -211,7 +246,9 @@ impl Resolver {
                         let lt = unwrap_resolved!(l.ty.res.borrow()).clone();
                         let rt = unwrap_resolved!(r.ty.res.borrow()).clone();
 
-                        if lt != rt {
+                        if lt == rt {
+                            *expr.ty.res.borrow_mut() = ResolveStatus::Resolved(lt);
+                        } else {
                             return_err!(
                                 self,
                                 ResolverError {
@@ -242,7 +279,7 @@ impl Resolver {
                             ResolveStatus::Resolved(unwrap_resolved!(c.ty.res.borrow()).clone());
                     }
                     PrimaryExprKind::FnCall(fc) => {
-                        let id = unwrap_resolved!(fc.res.borrow()).clone();
+                        let id = *unwrap_resolved!(fc.res.borrow());
                         let fndecl = self.prog.fndecl(id);
                         *expr.ty.res.borrow_mut() = ResolveStatus::Resolved(
                             unwrap_resolved!(fndecl.ret_ty.res.borrow()).clone(),
@@ -261,8 +298,8 @@ impl Resolver {
                 stop_if_err!(self.err);
 
                 match self.locals.get(&var.name.ident) {
-                    Some((_, res)) => {
-                        *var.ty.res.borrow_mut() = ResolveStatus::Resolved(res.clone());
+                    Some((_, ty)) => {
+                        *var.ty.res.borrow_mut() = ResolveStatus::Resolved(ty.clone());
                     }
                     None => {
                         return_err!(

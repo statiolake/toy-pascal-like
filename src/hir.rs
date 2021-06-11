@@ -32,6 +32,7 @@ pub fn lower_ast(stmt: &Ast<AstBeginStmt>) -> Program {
         root_scope,
         start_fn,
         FnBody {
+            id: start_fn,
             stmt: Box::new(stmt),
         },
     );
@@ -223,6 +224,7 @@ impl fmt::Display for TyKind {
 
 #[derive(Debug)]
 pub struct FnBody {
+    pub id: ItemId,
     pub stmt: Box<BeginStmt>,
 }
 
@@ -490,6 +492,7 @@ impl LoweringContext {
             self.register_fndecl(curr_scope, stmt.span, ident, params, ret_ty);
 
         let body = FnBody {
+            id: new_fn,
             stmt: Box::new(self.lower_begin_stmt(new_fn, new_scope, &stmt.ast.body)),
         };
         self.register_fnbody(curr_scope, new_fn, body);
