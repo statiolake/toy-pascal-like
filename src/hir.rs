@@ -617,7 +617,7 @@ impl LoweringContext {
     ) -> AssgStmt {
         AssgStmt {
             span: stmt.span,
-            var: Box::new(self.lower_var(fn_id, scope_id, &stmt.ast.var)),
+            var: Box::new(self.lower_var(fn_id, scope_id, &stmt.ast.var, true)),
             expr: Box::new(self.lower_arith_expr(fn_id, scope_id, &stmt.ast.expr)),
         }
     }
@@ -630,7 +630,7 @@ impl LoweringContext {
     ) -> DumpStmt {
         DumpStmt {
             span: stmt.span,
-            var: Box::new(self.lower_var(fn_id, scope_id, &stmt.ast.var)),
+            var: Box::new(self.lower_var(fn_id, scope_id, &stmt.ast.var, false)),
         }
     }
 
@@ -778,7 +778,7 @@ impl LoweringContext {
             },
             kind: match &expr.ast {
                 AstPrimaryExpr::Var(var) => {
-                    PrimaryExprKind::Var(Box::new(self.lower_var(fn_id, scope_id, var)))
+                    PrimaryExprKind::Var(Box::new(self.lower_var(fn_id, scope_id, var, false)))
                 }
                 AstPrimaryExpr::Const(cst) => {
                     PrimaryExprKind::Const(Box::new(self.lower_const(fn_id, scope_id, cst)))
@@ -843,17 +843,25 @@ impl LoweringContext {
         }
     }
 
-    fn lower_var(&mut self, fn_id: FnId, scope_id: ScopeId, var: &Ast<AstVar>) -> VarRef {
-        // try registering new variable
-        let name = self.lower_ident(fn_id, scope_id, var.ast.ident());
-        self.try_register_var(
-            scope_id,
-            name,
-            Ty {
-                span: var.span,
-                res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
-            },
-        );
+    fn lower_var(
+        &mut self,
+        fn_id: FnId,
+        scope_id: ScopeId,
+        var: &Ast<AstVar>,
+        try_register: bool,
+    ) -> VarRef {
+        if try_register {
+            // try registering new variable
+            let name = self.lower_ident(fn_id, scope_id, var.ast.ident());
+            self.try_register_var(
+                scope_id,
+                name,
+                Ty {
+                    span: var.span,
+                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
+                },
+            );
+        }
 
         VarRef {
             span: var.span,
