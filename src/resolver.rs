@@ -2,7 +2,7 @@ use crate::hir::*;
 use crate::hir_visit;
 use crate::hir_visit::Visit;
 use crate::span::Span;
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 #[derive(thiserror::Error, Debug)]
 #[error("{span}: {kind}")]
@@ -19,18 +19,15 @@ pub enum ResolverErrorKind {
     #[error("undeclared variable: `{ident}`")]
     UndeclaredVariable { ident: String },
 
+    #[error("variable `{ident}` is read before initialization")]
+    UseBeforeInit { ident: String },
+
     #[error("unknown type: `{ident}`")]
     UnknownTy { ident: String },
 
     // When two parameters are the same name, etc.
     #[error("already defined variable: `{ident}`")]
     AlreadyDefinedVariable { ident: String },
-
-    #[error("could not determine the type")]
-    InferFailure,
-
-    #[error("type mismatch: expected `{expected}` but found `{found}`")]
-    TyMismatch { expected: TyKind, found: TyKind },
 }
 
 impl ResolverErrorKind {
@@ -38,19 +35,16 @@ impl ResolverErrorKind {
         match self {
             ResolverErrorKind::UndeclaredFunction { .. } => "unknown function name".to_string(),
             ResolverErrorKind::UndeclaredVariable { .. } => "unknown variable name".to_string(),
+            ResolverErrorKind::UseBeforeInit { .. } => "used but not initialized".to_string(),
             ResolverErrorKind::UnknownTy { .. } => "unknown type".to_string(),
-            &ResolverErrorKind::AlreadyDefinedVariable { .. } => "already defined".to_string(),
-            ResolverErrorKind::InferFailure => "could not infer the type of this".to_string(),
-            ResolverErrorKind::TyMismatch { expected, found } => {
-                format!("expected `{}`, found `{}`", expected, found)
-            }
+            ResolverErrorKind::AlreadyDefinedVariable { .. } => "already defined".to_string(),
         }
     }
 }
 
 pub type Result<T, E = ResolverError> = std::result::Result<T, E>;
 
-pub fn resolve_progam(prog: Program) -> Result<Program> {
+pub fn resolve_progam(prog: Program) -> Result<Program, Vec<ResolverError>> {
     Resolver::from_program(prog).resolve()
 }
 
@@ -64,7 +58,7 @@ impl Resolver {
         Self { prog }
     }
 
-    pub fn resolve(self) -> Result<Program> {
+    pub fn resolve(self) -> Result<Program, Vec<ResolverError>> {
         self.resolve_all()?;
         self.validate();
 
@@ -72,74 +66,47 @@ impl Resolver {
     }
 }
 
-macro_rules! unwrap_resolved {
-    ($res:expr) => {
-        match &*$res {
-            ResolveStatus::Resolved(v) => v,
-            ResolveStatus::Unresolved(ident) => {
-                panic!("internal error: type {} is not resolved yet?", ident.ident)
-            }
-            ResolveStatus::Unknown => panic!("internal error: type is not inferred yet?"),
-        }
-    };
-}
-
-macro_rules! stop_if_err {
-    ($err:expr) => {
-        if $err.is_some() {
-            return;
-        }
-    };
-}
-
-macro_rules! return_if_err {
-    ($self:expr, $res:expr) => {
-        if let Err(err) = $res {
-            $self.err = Some(err);
-            return;
-        }
-    };
-}
-
-macro_rules! return_err {
-    ($self:expr, $err:expr) => {{
-        $self.err = Some($err);
-        return;
-    }};
-}
-
 impl Resolver {
-    fn resolve_all(&self) -> Result<()> {
-        let mut visitor = ResolverVisitor {
+    fn resolve_all(&self) -> Result<(), Vec<ResolverError>> {
+        let scope_id = self.prog.fndecl(self.prog.start_fn_id).scope_id;
+        let mut visitor = VisitorContext {
             prog: &self.prog,
-            locals: BTreeMap::new(),
-            err: None,
+            scope_id,
+            visible_vars: BTreeSet::new(),
+            errors: vec![],
         };
         visitor.visit_all(&self.prog);
-        return match visitor.err {
-            None => Ok(()),
-            Some(err) => Err(err),
+        return if visitor.errors.is_empty() {
+            Ok(())
+        } else {
+            Err(visitor.errors)
         };
 
-        struct ResolverVisitor<'hir> {
+        struct VisitorContext<'hir> {
             prog: &'hir Program,
-            locals: BTreeMap<String, (Span, TyKind)>,
-            err: Option<ResolverError>,
+            scope_id: ScopeId,
+            visible_vars: BTreeSet<VarId>,
+            errors: Vec<ResolverError>,
         }
 
-        fn resolve_primitive(ty: &Ty) -> Result<()> {
+        fn resolve_primitive_ty(ty: &Ty) -> Result<()> {
             let cloned = ty.res.borrow().clone();
             if let ResolveStatus::Unresolved(name) = cloned {
                 match &*name.ident {
-                    "int" => *ty.res.borrow_mut() = ResolveStatus::Resolved(TyKind::Int),
-                    "float" => *ty.res.borrow_mut() = ResolveStatus::Resolved(TyKind::Float),
+                    "int" => {
+                        *ty.res.borrow_mut() =
+                            ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Int))
+                    }
+                    "float" => {
+                        *ty.res.borrow_mut() =
+                            ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Float))
+                    }
                     _ => {
+                        *ty.res.borrow_mut() = ResolveStatus::Err(name.clone());
                         return Err(ResolverError {
                             span: ty.span,
-                            kind: ResolverErrorKind::UnknownTy {
-                                ident: name.ident.clone(),
-                            },
-                        })
+                            kind: ResolverErrorKind::UnknownTy { ident: name.ident },
+                        });
                     }
                 }
             }
@@ -147,179 +114,58 @@ impl Resolver {
             Ok(())
         }
 
-        impl Visit for ResolverVisitor<'_> {
-            fn visit_fndecl(&mut self, fndecl: &FnDecl) {
-                stop_if_err!(self.err);
-                hir_visit::visit_fndecl(self, fndecl);
-                stop_if_err!(self.err);
-                return_if_err!(self, resolve_primitive(&fndecl.ret_ty));
+        fn find_var(scope: &Scope, name: &Ident) -> Result<VarId> {
+            if let Some(var) = scope.vars.values().find(|v| v.name.ident == name.ident) {
+                Ok(var.id)
+            } else {
+                Err(ResolverError {
+                    span: name.span,
+                    kind: ResolverErrorKind::UndeclaredVariable {
+                        ident: name.ident.clone(),
+                    },
+                })
             }
+        }
 
-            fn visit_fnbody(&mut self, fnbody: &FnBody) {
-                stop_if_err!(self.err);
+        impl VisitorContext<'_> {
+            fn resolve_var_ref(&mut self, var_ref: &VarRef, is_assign: bool) -> Result<()> {
+                let scope = self.prog.scope(self.scope_id);
 
-                // set up new local variable tables
-                self.locals = BTreeMap::new();
-
-                // args and return values should be registered to the local table.
-                let fndecl = self.prog.fndecl(fnbody.id);
-                let local = (
-                    fndecl.name.span,
-                    unwrap_resolved!(fndecl.ret_ty.res.borrow()).clone(),
-                );
-                self.locals.insert(fndecl.name.ident.clone(), local);
-                for param in &fndecl.params {
-                    let local = (
-                        param.name.span,
-                        unwrap_resolved!(param.ty.res.borrow()).clone(),
-                    );
-                    let old = self.locals.insert(param.name.ident.clone(), local);
-                    if old.is_some() {
-                        return_err!(
-                            self,
-                            ResolverError {
-                                span: param.name.span,
-                                kind: ResolverErrorKind::AlreadyDefinedVariable {
-                                    ident: param.name.ident.clone(),
-                                }
-                            }
-                        );
-                    }
-                }
-
-                hir_visit::visit_fnbody(self, fnbody);
-                stop_if_err!(self.err);
-            }
-
-            fn visit_param(&mut self, param: &Param) {
-                stop_if_err!(self.err);
-                hir_visit::visit_param(self, param);
-                stop_if_err!(self.err);
-                return_if_err!(self, resolve_primitive(&param.ty));
-            }
-
-            fn visit_assg_stmt(&mut self, stmt: &AssgStmt) {
-                stop_if_err!(self.err);
-                // You can't use hir_visit::visit_assg_stmt(), because you need to declare the
-                // variable if it's not declared. But to infer the type of declared variable, you
-                // need to first check type of the assigning expr.
-                self.visit_arith_expr(&stmt.expr);
-                stop_if_err!(self.err);
-
-                let ty_expr = unwrap_resolved!(stmt.expr.ty.res.borrow()).clone();
-                let (_, ty_var) = self
-                    .locals
-                    .entry(stmt.var.name.ident.clone())
-                    .or_insert_with(|| (stmt.var.span, ty_expr.clone()));
-                let ty_var = ty_var.clone();
-
-                if ty_var == ty_expr {
-                    *stmt.var.ty.res.borrow_mut() = ResolveStatus::Resolved(ty_var);
-                } else {
-                    return_err!(
-                        self,
-                        ResolverError {
-                            span: stmt.expr.span,
-                            kind: ResolverErrorKind::TyMismatch {
-                                expected: ty_var,
-                                found: ty_expr,
-                            }
+                let cloned = var_ref.res.borrow().clone();
+                if let ResolveStatus::Unresolved(name) = cloned {
+                    let var_id = match find_var(scope, &name) {
+                        Ok(id) => id,
+                        Err(e) => {
+                            // set the status to error
+                            *var_ref.res.borrow_mut() = ResolveStatus::Err(name);
+                            return Err(e);
                         }
-                    );
-                }
-            }
+                    };
 
-            fn visit_arith_expr(&mut self, expr: &ArithExpr) {
-                stop_if_err!(self.err);
-                hir_visit::visit_arith_expr(self, expr);
-                stop_if_err!(self.err);
-                match &expr.kind {
-                    ArithExprKind::Primary(e) => {
-                        *expr.ty.res.borrow_mut() =
-                            ResolveStatus::Resolved(unwrap_resolved!(e.ty.res.borrow()).clone());
-                    }
-                    ArithExprKind::UnaryOp(_, e) => {
-                        *expr.ty.res.borrow_mut() =
-                            ResolveStatus::Resolved(unwrap_resolved!(e.ty.res.borrow()).clone());
-                    }
-                    ArithExprKind::BinOp(_, l, r) => {
-                        let lt = unwrap_resolved!(l.ty.res.borrow()).clone();
-                        let rt = unwrap_resolved!(r.ty.res.borrow()).clone();
-
-                        if lt == rt {
-                            *expr.ty.res.borrow_mut() = ResolveStatus::Resolved(lt);
+                    // if the variable actually found but it's not yet visible, then register it as
+                    // a visible variable if this is assign statement, and otherwise it's
+                    // use-before-init error.
+                    if !self.visible_vars.contains(&var_id) {
+                        if is_assign {
+                            self.visible_vars.insert(var_id);
                         } else {
-                            return_err!(
-                                self,
-                                ResolverError {
-                                    span: r.span,
-                                    kind: ResolverErrorKind::TyMismatch {
-                                        expected: lt,
-                                        found: rt,
-                                    },
-                                }
-                            );
+                            let ident = name.ident.clone();
+                            *var_ref.res.borrow_mut() = ResolveStatus::Err(name);
+                            return Err(ResolverError {
+                                span: var_ref.span,
+                                kind: ResolverErrorKind::UseBeforeInit { ident },
+                            });
                         }
                     }
+
+                    // Successfully resolved now.
+                    *var_ref.res.borrow_mut() = ResolveStatus::Resolved(var_id);
                 }
+
+                Ok(())
             }
 
-            fn visit_primary_expr(&mut self, expr: &PrimaryExpr) {
-                stop_if_err!(self.err);
-                hir_visit::visit_primary_expr(self, expr);
-                stop_if_err!(self.err);
-
-                match &expr.kind {
-                    PrimaryExprKind::Var(v) => {
-                        *expr.ty.res.borrow_mut() =
-                            ResolveStatus::Resolved(unwrap_resolved!(v.ty.res.borrow()).clone());
-                    }
-                    PrimaryExprKind::Const(c) => {
-                        *expr.ty.res.borrow_mut() =
-                            ResolveStatus::Resolved(unwrap_resolved!(c.ty.res.borrow()).clone());
-                    }
-                    PrimaryExprKind::FnCall(fc) => {
-                        let id = *unwrap_resolved!(fc.res.borrow());
-                        let fndecl = self.prog.fndecl(id);
-                        *expr.ty.res.borrow_mut() = ResolveStatus::Resolved(
-                            unwrap_resolved!(fndecl.ret_ty.res.borrow()).clone(),
-                        );
-                    }
-                    PrimaryExprKind::Paren(e) => {
-                        *expr.ty.res.borrow_mut() =
-                            ResolveStatus::Resolved(unwrap_resolved!(e.ty.res.borrow()).clone());
-                    }
-                }
-            }
-
-            fn visit_var(&mut self, var: &Var) {
-                stop_if_err!(self.err);
-                hir_visit::visit_var(self, var);
-                stop_if_err!(self.err);
-
-                match self.locals.get(&var.name.ident) {
-                    Some((_, ty)) => {
-                        *var.ty.res.borrow_mut() = ResolveStatus::Resolved(ty.clone());
-                    }
-                    None => {
-                        return_err!(
-                            self,
-                            ResolverError {
-                                span: var.span,
-                                kind: ResolverErrorKind::UndeclaredVariable {
-                                    ident: var.name.ident.clone()
-                                }
-                            }
-                        );
-                    }
-                }
-            }
-
-            fn visit_fncall(&mut self, fncall: &FnCall) {
-                stop_if_err!(self.err);
-                hir_visit::visit_fncall(self, fncall);
-                stop_if_err!(self.err);
-
+            fn resolve_fncall(&mut self, fncall: &FnCall) -> Result<()> {
                 let cloned = fncall.res.borrow().clone();
                 if let ResolveStatus::Unresolved(name) = cloned {
                     let fndecl = self
@@ -330,18 +176,102 @@ impl Resolver {
                     let fndecl = match fndecl {
                         Some(fndecl) => fndecl,
                         None => {
-                            return_err!(
-                                self,
-                                ResolverError {
-                                    span: fncall.span_name,
-                                    kind: ResolverErrorKind::UndeclaredFunction {
-                                        ident: name.ident.clone(),
-                                    }
-                                }
-                            );
+                            *fncall.res.borrow_mut() = ResolveStatus::Err(name.clone());
+                            return Err(ResolverError {
+                                span: fncall.span_name,
+                                kind: ResolverErrorKind::UndeclaredFunction { ident: name.ident },
+                            });
                         }
                     };
                     *fncall.res.borrow_mut() = ResolveStatus::Resolved(fndecl.id);
+                }
+
+                Ok(())
+            }
+        }
+
+        impl Visit for VisitorContext<'_> {
+            fn visit_fnbody(&mut self, fnbody: &FnBody) {
+                // set up new local variable tables
+                self.visible_vars = BTreeSet::new();
+                self.scope_id = fnbody.inner_scope_id;
+                let scope = self.prog.scope(self.scope_id);
+
+                // params and return variable should be registered to the local vars table.
+                let fndecl = self.prog.fndecl(fnbody.id);
+
+                // return variable: it is added only when the return type is not void
+                let ret_var_id = match find_var(scope, &fndecl.name) {
+                    Ok(id) => id,
+                    Err(err) => {
+                        self.errors.push(err);
+                        return;
+                    }
+                };
+                if !matches!(
+                    &*scope.var(ret_var_id).ty.res.borrow(),
+                    ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Void))
+                ) {
+                    // only add when the return value is not void
+                    self.visible_vars.insert(ret_var_id);
+                }
+
+                // find params and make it visible
+                for param in &fndecl.params {
+                    let param_var_id = match find_var(scope, &param.name) {
+                        Ok(id) => id,
+                        Err(err) => {
+                            self.errors.push(err);
+                            return;
+                        }
+                    };
+
+                    if !self.visible_vars.insert(param_var_id) {
+                        // if the specified var_id is already visible: more than one parameters have
+                        // the same name in this fndecl.
+                        self.errors.push(ResolverError {
+                            span: param.span,
+                            kind: ResolverErrorKind::AlreadyDefinedVariable {
+                                ident: param.name.ident.clone(),
+                            },
+                        });
+                        return;
+                    }
+                }
+
+                hir_visit::visit_fnbody(self, fnbody);
+            }
+
+            fn visit_ty(&mut self, ty: &Ty) {
+                if let Err(err) = resolve_primitive_ty(ty) {
+                    self.errors.push(err);
+                    return;
+                }
+            }
+
+            fn visit_assg_stmt(&mut self, stmt: &AssgStmt) {
+                // We can't use hir_visit::visit_assg_stmt(), since that will try to resolve var_ref
+                // of asignee.
+                self.visit_arith_expr(&stmt.expr);
+                if let Err(err) = self.resolve_var_ref(&*stmt.var, true) {
+                    self.errors.push(err);
+                    return;
+                }
+            }
+
+            fn visit_var_ref(&mut self, var_ref: &VarRef) {
+                hir_visit::visit_var_ref(self, var_ref);
+                if let Err(err) = self.resolve_var_ref(&*var_ref, false) {
+                    self.errors.push(err);
+                    return;
+                }
+            }
+
+            fn visit_fncall(&mut self, fncall: &FnCall) {
+                hir_visit::visit_fncall(self, fncall);
+                if let Err(err) = self.resolve_fncall(fncall) {
+                    self.errors.push(err);
+                    return;
                 }
             }
         }

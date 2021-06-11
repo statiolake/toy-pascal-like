@@ -6,6 +6,7 @@ pub mod lexer;
 pub mod parser;
 pub mod resolver;
 pub mod span;
+// pub mod typeck;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error<'a> {

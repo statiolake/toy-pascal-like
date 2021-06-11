@@ -21,7 +21,9 @@ pub fn lower_ast(stmt: &Ast<AstBeginStmt>) -> Program {
         vec![],
         Ty {
             span: Span::new_zero(),
-            res: RefCell::new(ResolveStatus::Resolved(TyKind::Void)),
+            res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(
+                TyKind::Void,
+            ))),
         },
     );
 
@@ -33,6 +35,7 @@ pub fn lower_ast(stmt: &Ast<AstBeginStmt>) -> Program {
         start_fn_id,
         FnBody {
             id: start_fn_id,
+            inner_scope_id: start_scope_id,
             stmt: Box::new(stmt),
         },
     );
@@ -51,6 +54,9 @@ pub struct FnId(usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ScopeId(usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct VarId(usize);
+
 #[derive(Debug)]
 pub struct ItemIdGenerator {
     current: usize,
@@ -62,15 +68,21 @@ impl ItemIdGenerator {
     }
 
     pub fn gen_fn(&mut self) -> FnId {
-        let id = self.current;
-        self.current += 1;
-        FnId(id)
+        FnId(self.next_id())
     }
 
     pub fn gen_scope(&mut self) -> ScopeId {
+        ScopeId(self.next_id())
+    }
+
+    pub fn gen_var(&mut self) -> VarId {
+        VarId(self.next_id())
+    }
+
+    fn next_id(&mut self) -> usize {
         let id = self.current;
         self.current += 1;
-        ScopeId(id)
+        id
     }
 }
 
@@ -92,37 +104,37 @@ impl Program {
     pub fn scope(&self, id: ScopeId) -> &Scope {
         self.scopes
             .get(&id)
-            .unwrap_or_else(|| panic!("scope of id {:?} not registered", id))
+            .unwrap_or_else(|| panic!("internal error: scope of id {:?} not registered", id))
     }
 
     pub fn fndecl(&self, id: FnId) -> &FnDecl {
         self.fndecls
             .get(&id)
-            .unwrap_or_else(|| panic!("function of id {:?} not registered", id))
+            .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 
     pub fn fnbody(&self, id: FnId) -> &FnBody {
         self.fnbodies
             .get(&id)
-            .unwrap_or_else(|| panic!("function of id {:?} not registered", id))
+            .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 
     pub fn scope_mut(&mut self, id: ScopeId) -> &mut Scope {
         self.scopes
             .get_mut(&id)
-            .unwrap_or_else(|| panic!("scope of id {:?} not registered", id))
+            .unwrap_or_else(|| panic!("internal error: scope of id {:?} not registered", id))
     }
 
     pub fn fndecl_mut(&mut self, id: FnId) -> &mut FnDecl {
         self.fndecls
             .get_mut(&id)
-            .unwrap_or_else(|| panic!("function of id {:?} not registered", id))
+            .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 
     pub fn fnbody_mut(&mut self, id: FnId) -> &mut FnBody {
         self.fnbodies
             .get_mut(&id)
-            .unwrap_or_else(|| panic!("function of id {:?} not registered", id))
+            .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 }
 
@@ -142,6 +154,13 @@ pub struct Scope {
     /// functions in the parent scope is actually visible in the child scopes, but they will not be
     /// listed in here.
     pub fn_ids: Vec<FnId>,
+
+    /// Variables in scope
+    // In lowering phase, variables are just collected from function parameters, function name and
+    // local variables. Because this language doesn't have explicit variable declaration statement
+    // (yet), all I can do here is to collect variables of the same name just once. Variable name
+    // conflicts are later checked in resolver.
+    pub vars: BTreeMap<VarId, Var>,
 }
 
 impl Scope {
@@ -150,7 +169,14 @@ impl Scope {
             id,
             parent_id,
             fn_ids: Vec::new(),
+            vars: BTreeMap::new(),
         }
+    }
+
+    pub fn var(&self, id: VarId) -> &Var {
+        self.vars
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 }
 
@@ -168,18 +194,7 @@ pub struct FnDecl {
     pub ret_ty: Ty,
 }
 
-#[derive(Debug)]
-pub struct FnDef {
-    /// ID for this function
-    pub id: FnId,
-
-    /// Scope this function's body created.
-    pub body_scope_id: ScopeId,
-
-    pub body: Box<Stmt>,
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Param {
     pub span: Span,
     pub name: Ident,
@@ -196,13 +211,24 @@ pub struct Ident {
 pub enum ResolveStatus<T: Clone> {
     Resolved(T),
     Unresolved(Ident),
-    Unknown,
+    Err(Ident),
+}
+
+#[derive(Debug, Clone)]
+pub enum TypeckStatus {
+    Infer,
+    Revealed(TyKind),
+    Err {
+        span: Span,
+        expected: TyKind,
+        found: TyKind,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub struct Ty {
     pub span: Span,
-    pub res: RefCell<ResolveStatus<TyKind>>,
+    pub res: RefCell<ResolveStatus<TypeckStatus>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -225,7 +251,15 @@ impl fmt::Display for TyKind {
 #[derive(Debug)]
 pub struct FnBody {
     pub id: FnId,
+    pub inner_scope_id: ScopeId,
     pub stmt: Box<BeginStmt>,
+}
+
+#[derive(Debug)]
+pub struct Var {
+    pub id: VarId,
+    pub name: Ident,
+    pub ty: Ty,
 }
 
 #[derive(Debug)]
@@ -268,14 +302,14 @@ pub struct BeginStmt {
 #[derive(Debug)]
 pub struct AssgStmt {
     pub span: Span,
-    pub var: Box<Var>,
+    pub var: Box<VarRef>,
     pub expr: Box<ArithExpr>,
 }
 
 #[derive(Debug)]
 pub struct DumpStmt {
     pub span: Span,
-    pub var: Box<Var>,
+    pub var: Box<VarRef>,
 }
 
 #[derive(Debug)]
@@ -338,17 +372,16 @@ pub struct PrimaryExpr {
 
 #[derive(Debug)]
 pub enum PrimaryExprKind {
-    Var(Box<Var>),
+    Var(Box<VarRef>),
     Const(Box<Const>),
     FnCall(Box<FnCall>),
     Paren(Box<ArithExpr>),
 }
 
 #[derive(Debug)]
-pub struct Var {
+pub struct VarRef {
     pub span: Span,
-    pub ty: Ty,
-    pub name: Ident,
+    pub res: RefCell<ResolveStatus<VarId>>,
 }
 
 #[derive(Debug)]
@@ -398,10 +431,16 @@ impl LoweringContext {
         (lctx, root_scope_id)
     }
 
+    fn scope(&self, id: ScopeId) -> &Scope {
+        self.scopes
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: scope {:?} not registered", id))
+    }
+
     fn scope_mut(&mut self, id: ScopeId) -> &mut Scope {
         self.scopes
             .get_mut(&id)
-            .unwrap_or_else(|| panic!("scope {:?} not registered", id))
+            .unwrap_or_else(|| panic!("internal error: scope {:?} not registered", id))
     }
 
     fn register_fndecl(
@@ -419,12 +458,12 @@ impl LoweringContext {
             id: new_fn_id,
             scope_id: curr_scope_id,
             span,
-            name,
-            params,
-            ret_ty,
+            name: name.clone(),
+            params: params.clone(),
+            ret_ty: ret_ty.clone(),
         };
 
-        // register this FnDecl
+        // Register this FnDecl
         assert!(
             self.fndecls.insert(new_fn_id, new_fn).is_none(),
             "ID conflict for function {:?}",
@@ -432,8 +471,18 @@ impl LoweringContext {
         );
         self.scope_mut(curr_scope_id).fn_ids.push(new_fn_id);
 
+        // Prepare new scope; variables for return value and parameters should also be registered as
+        // a local variable.
         let new_scope = Scope::new(new_scope_id, Some(curr_scope_id));
         self.scopes.insert(new_scope_id, new_scope);
+
+        // return variable
+        self.try_register_var(new_scope_id, name, ret_ty);
+
+        // parameters
+        for param in params {
+            self.try_register_var(new_scope_id, param.name, param.ty);
+        }
 
         (new_fn_id, new_scope_id)
     }
@@ -445,6 +494,26 @@ impl LoweringContext {
             "function body of undeclared function ({:?}) is registered",
             reg_fn_id
         );
+    }
+
+    fn try_register_var(&mut self, scope_id: ScopeId, name: Ident, ty: Ty) {
+        // If the variable of same name is already registered, skip this. Those correctness is
+        // checked in resolve phase, where the variable is actually resolved.
+        if self
+            .scope(scope_id)
+            .vars
+            .values()
+            .any(|v| v.name.ident == name.ident)
+        {
+            return;
+        }
+
+        // We currently does not attach this ID to anywhere; those connection is built in resolve
+        // phase.
+        let id = self.id_gen.gen_var();
+        self.scope_mut(scope_id)
+            .vars
+            .insert(id, Var { id, name, ty });
     }
 
     fn lower_stmt(&mut self, fn_id: FnId, scope_id: ScopeId, stmt: &Ast<AstStmt>) -> Stmt {
@@ -491,6 +560,7 @@ impl LoweringContext {
 
         let body = FnBody {
             id: new_fn_id,
+            inner_scope_id: new_scope_id,
             stmt: Box::new(self.lower_begin_stmt(new_fn_id, new_scope_id, &stmt.ast.body)),
         };
         self.register_fnbody(scope_id, new_fn_id, body);
@@ -624,7 +694,7 @@ impl LoweringContext {
                     kind,
                     ty: Ty {
                         span: expr.span,
-                        res: RefCell::new(ResolveStatus::Unknown),
+                        res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
                     },
                 }
             }
@@ -656,7 +726,7 @@ impl LoweringContext {
                     kind,
                     ty: Ty {
                         span: expr.span,
-                        res: RefCell::new(ResolveStatus::Unknown),
+                        res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
                     },
                 }
             }
@@ -674,7 +744,7 @@ impl LoweringContext {
                 span: expr.span,
                 ty: Ty {
                     span: expr.span,
-                    res: RefCell::new(ResolveStatus::Unknown),
+                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
                 },
                 kind: ArithExprKind::Primary(Box::new(
                     self.lower_primary_expr(fn_id, scope_id, &e),
@@ -684,7 +754,7 @@ impl LoweringContext {
                 span: expr.span,
                 ty: Ty {
                     span: expr.span,
-                    res: RefCell::new(ResolveStatus::Unknown),
+                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
                 },
                 kind: ArithExprKind::UnaryOp(
                     UnaryOp::Neg,
@@ -704,7 +774,7 @@ impl LoweringContext {
             span: expr.span,
             ty: Ty {
                 span: expr.span,
-                res: RefCell::new(ResolveStatus::Unknown),
+                res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
             },
             kind: match &expr.ast {
                 AstPrimaryExpr::Var(var) => {
@@ -752,14 +822,16 @@ impl LoweringContext {
             AstConst::Int(v) => (
                 Ty {
                     span: cst.span,
-                    res: RefCell::new(ResolveStatus::Resolved(TyKind::Int)),
+                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Int))),
                 },
                 Value::Int(*v),
             ),
             AstConst::Float(v) => (
                 Ty {
                     span: cst.span,
-                    res: RefCell::new(ResolveStatus::Resolved(TyKind::Float)),
+                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(
+                        TyKind::Float,
+                    ))),
                 },
                 Value::Float(*v),
             ),
@@ -771,14 +843,25 @@ impl LoweringContext {
         }
     }
 
-    fn lower_var(&mut self, fn_id: FnId, scope_id: ScopeId, var: &Ast<AstVar>) -> Var {
-        Var {
-            span: var.span,
-            ty: Ty {
+    fn lower_var(&mut self, fn_id: FnId, scope_id: ScopeId, var: &Ast<AstVar>) -> VarRef {
+        // try registering new variable
+        let name = self.lower_ident(fn_id, scope_id, var.ast.ident());
+        self.try_register_var(
+            scope_id,
+            name,
+            Ty {
                 span: var.span,
-                res: RefCell::new(ResolveStatus::Unknown),
+                res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
             },
-            name: self.lower_ident(fn_id, scope_id, var.ast.ident()),
+        );
+
+        VarRef {
+            span: var.span,
+            res: RefCell::new(ResolveStatus::Unresolved(self.lower_ident(
+                fn_id,
+                scope_id,
+                var.ast.ident(),
+            ))),
         }
     }
 

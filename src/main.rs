@@ -175,15 +175,17 @@ fn main() {
     println!("--- hir ---");
     println!("{:#?}", hir);
 
-    let thir = match resolve_progam(hir) {
+    let rhir = match resolve_progam(hir) {
         Ok(resolved) => resolved,
-        Err(err) => {
-            print_resolver_error(&filename, &source, &err);
+        Err(errors) => {
+            for err in errors {
+                print_resolver_error(&filename, &source, &err);
+            }
             return;
         }
     };
-    println!("--- typed hir ---");
-    println!("{:#?}", thir);
+    println!("--- resolved hir ---");
+    println!("{:#?}", rhir);
 
     println!("--- run ---");
     let state = match run(&ast) {

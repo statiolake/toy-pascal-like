@@ -65,8 +65,8 @@ pub trait Visit {
         visit_fncall(self, fncall);
     }
 
-    fn visit_var(&mut self, var: &Var) {
-        visit_var(self, var);
+    fn visit_var_ref(&mut self, var: &VarRef) {
+        visit_var_ref(self, var);
     }
 
     fn visit_const(&mut self, cst: &Const) {
@@ -142,11 +142,11 @@ pub fn visit_begin_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &BeginStmt) {
 }
 
 pub fn visit_assg_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &AssgStmt) {
-    v.visit_var(&stmt.var);
+    v.visit_var_ref(&stmt.var);
 }
 
 pub fn visit_dump_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &DumpStmt) {
-    v.visit_var(&stmt.var);
+    v.visit_var_ref(&stmt.var);
 }
 
 pub fn visit_bool_expr<V: Visit + ?Sized>(v: &mut V, expr: &BoolExpr) {
@@ -167,14 +167,14 @@ pub fn visit_arith_expr<V: Visit + ?Sized>(v: &mut V, expr: &ArithExpr) {
 
 pub fn visit_primary_expr<V: Visit + ?Sized>(v: &mut V, expr: &PrimaryExpr) {
     match &expr.kind {
-        PrimaryExprKind::Var(var) => v.visit_var(var),
+        PrimaryExprKind::Var(var) => v.visit_var_ref(var),
         PrimaryExprKind::Const(cst) => v.visit_const(cst),
         PrimaryExprKind::FnCall(fncall) => v.visit_fncall(fncall),
         PrimaryExprKind::Paren(expr) => v.visit_arith_expr(expr),
     }
 }
 
-pub fn visit_var<V: Visit + ?Sized>(_v: &mut V, _var: &Var) {}
+pub fn visit_var_ref<V: Visit + ?Sized>(_v: &mut V, _var: &VarRef) {}
 
 pub fn visit_const<V: Visit + ?Sized>(_v: &mut V, _cst: &Const) {}
 
