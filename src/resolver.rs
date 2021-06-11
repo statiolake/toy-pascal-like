@@ -2,7 +2,7 @@ use crate::hir::*;
 use crate::hir_visit;
 use crate::hir_visit::Visit;
 use crate::span::Span;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(thiserror::Error, Debug)]
 #[error("{span}: {kind}")]
@@ -107,7 +107,7 @@ impl Resolver {
     fn resolve_all(&self) -> Result<()> {
         let mut visitor = ResolverVisitor {
             prog: &self.prog,
-            locals: HashMap::new(),
+            locals: BTreeMap::new(),
             err: None,
         };
         visitor.visit_all(&self.prog);
@@ -118,7 +118,7 @@ impl Resolver {
 
         struct ResolverVisitor<'hir> {
             prog: &'hir Program,
-            locals: HashMap<String, (Span, TyKind)>,
+            locals: BTreeMap<String, (Span, TyKind)>,
             err: Option<ResolverError>,
         }
 
@@ -153,7 +153,7 @@ impl Resolver {
             fn visit_fnbody(&mut self, fnbody: &FnBody) {
                 stop_if_err!(self.err);
                 // set up new local variable tables
-                self.locals = HashMap::new();
+                self.locals = BTreeMap::new();
                 hir_visit::visit_fnbody(self, fnbody);
                 stop_if_err!(self.err);
             }

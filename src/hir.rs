@@ -1,8 +1,8 @@
 use crate::ast::*;
 use crate::span::Span;
-use maplit::hashmap;
+use maplit::btreemap;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt;
 
 const SCRIPT_ROOT_FN_NAME: &str = "__start";
@@ -81,10 +81,10 @@ impl Default for ItemIdGenerator {
 
 #[derive(Debug)]
 pub struct Program {
-    pub scopes: HashMap<ScopeId, Scope>,
+    pub scopes: BTreeMap<ScopeId, Scope>,
     pub start_fn: ItemId,
-    pub fndecls: HashMap<ItemId, FnDecl>,
-    pub fnbodies: HashMap<ItemId, FnBody>,
+    pub fndecls: BTreeMap<ItemId, FnDecl>,
+    pub fnbodies: BTreeMap<ItemId, FnBody>,
 }
 
 impl Program {
@@ -371,9 +371,9 @@ pub struct FnCall {
 }
 
 struct LoweringContext {
-    scopes: HashMap<ScopeId, Scope>,
-    fndecls: HashMap<ItemId, FnDecl>,
-    fnbodies: HashMap<ItemId, FnBody>,
+    scopes: BTreeMap<ScopeId, Scope>,
+    fndecls: BTreeMap<ItemId, FnDecl>,
+    fnbodies: BTreeMap<ItemId, FnBody>,
     id_gen: ItemIdGenerator,
 }
 
@@ -385,11 +385,11 @@ impl LoweringContext {
         let id_root_scope = id_gen.gen_scope();
         let root_scope = Scope::new(id_root_scope, None);
 
-        let scopes = hashmap! { id_root_scope => root_scope };
+        let scopes = btreemap! { id_root_scope => root_scope };
         let lctx = Self {
             scopes,
-            fndecls: HashMap::new(),
-            fnbodies: HashMap::new(),
+            fndecls: BTreeMap::new(),
+            fnbodies: BTreeMap::new(),
             id_gen,
         };
 
