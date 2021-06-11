@@ -8,11 +8,11 @@ use std::fmt;
 const SCRIPT_ROOT_FN_NAME: &str = "__start";
 
 pub fn lower_ast(stmt: &Ast<AstBeginStmt>) -> Program {
-    let (mut lctx, root_scope) = LoweringContext::new();
+    let (mut lctx, root_scope_id) = LoweringContext::new();
 
     // register script root function
-    let (start_fn, start_scope) = lctx.register_fndecl(
-        root_scope,
+    let (start_fn_id, start_scope_id) = lctx.register_fndecl(
+        root_scope_id,
         stmt.span,
         Ident {
             span: Span::new_zero(),
@@ -26,20 +26,20 @@ pub fn lower_ast(stmt: &Ast<AstBeginStmt>) -> Program {
     );
 
     // lower the entire statement
-    let stmt = lctx.lower_begin_stmt(start_fn, start_scope, stmt);
+    let stmt = lctx.lower_begin_stmt(start_fn_id, start_scope_id, stmt);
 
     lctx.register_fnbody(
-        root_scope,
-        start_fn,
+        root_scope_id,
+        start_fn_id,
         FnBody {
-            id: start_fn,
+            id: start_fn_id,
             stmt: Box::new(stmt),
         },
     );
 
     Program {
         scopes: lctx.scopes,
-        start_fn,
+        start_fn_id,
         fndecls: lctx.fndecls,
         fnbodies: lctx.fnbodies,
     }
@@ -83,7 +83,7 @@ impl Default for ItemIdGenerator {
 #[derive(Debug)]
 pub struct Program {
     pub scopes: BTreeMap<ScopeId, Scope>,
-    pub start_fn: FnId,
+    pub start_fn_id: FnId,
     pub fndecls: BTreeMap<FnId, FnDecl>,
     pub fnbodies: BTreeMap<FnId, FnBody>,
 }
@@ -92,37 +92,37 @@ impl Program {
     pub fn scope(&self, id: ScopeId) -> &Scope {
         self.scopes
             .get(&id)
-            .unwrap_or_else(|| panic!("scope {:?} not registered", id))
+            .unwrap_or_else(|| panic!("scope of id {:?} not registered", id))
     }
 
     pub fn fndecl(&self, id: FnId) -> &FnDecl {
         self.fndecls
             .get(&id)
-            .unwrap_or_else(|| panic!("function {:?} not registered", id))
+            .unwrap_or_else(|| panic!("function of id {:?} not registered", id))
     }
 
     pub fn fnbody(&self, id: FnId) -> &FnBody {
         self.fnbodies
             .get(&id)
-            .unwrap_or_else(|| panic!("function {:?} not registered", id))
+            .unwrap_or_else(|| panic!("function of id {:?} not registered", id))
     }
 
     pub fn scope_mut(&mut self, id: ScopeId) -> &mut Scope {
         self.scopes
             .get_mut(&id)
-            .unwrap_or_else(|| panic!("scope {:?} not registered", id))
+            .unwrap_or_else(|| panic!("scope of id {:?} not registered", id))
     }
 
     pub fn fndecl_mut(&mut self, id: FnId) -> &mut FnDecl {
         self.fndecls
             .get_mut(&id)
-            .unwrap_or_else(|| panic!("function {:?} not registered", id))
+            .unwrap_or_else(|| panic!("function of id {:?} not registered", id))
     }
 
     pub fn fnbody_mut(&mut self, id: FnId) -> &mut FnBody {
         self.fnbodies
             .get_mut(&id)
-            .unwrap_or_else(|| panic!("function {:?} not registered", id))
+            .unwrap_or_else(|| panic!("function of id {:?} not registered", id))
     }
 }
 
@@ -134,7 +134,7 @@ pub struct Scope {
     /// ID for the parent scope (the parent in terms of tree structure)
     ///
     /// None means this is a root scope
-    pub parent: Option<ScopeId>,
+    pub parent_id: Option<ScopeId>,
 
     /// IDs of functions declared in this scope
     ///
@@ -145,10 +145,10 @@ pub struct Scope {
 }
 
 impl Scope {
-    pub fn new(id: ScopeId, parent: Option<ScopeId>) -> Scope {
+    pub fn new(id: ScopeId, parent_id: Option<ScopeId>) -> Scope {
         Scope {
             id,
-            parent,
+            parent_id,
             fn_ids: Vec::new(),
         }
     }
@@ -160,7 +160,7 @@ pub struct FnDecl {
     pub id: FnId,
 
     /// Scope which this function is in. Not what this function creates inside it.
-    pub scope: ScopeId,
+    pub scope_id: ScopeId,
 
     pub span: Span,
     pub name: Ident,
@@ -173,8 +173,8 @@ pub struct FnDef {
     /// ID for this function
     pub id: FnId,
 
-    /// Scope which this function created. Not where this function is placed.
-    pub scope_inside: ScopeId,
+    /// Scope this function's body created.
+    pub body_scope_id: ScopeId,
 
     pub body: Box<Stmt>,
 }
@@ -384,10 +384,10 @@ impl LoweringContext {
         let mut id_gen = ItemIdGenerator::new();
 
         // prepare root scope
-        let id_root_scope = id_gen.gen_scope();
-        let root_scope = Scope::new(id_root_scope, None);
+        let root_scope_id = id_gen.gen_scope();
+        let root_scope = Scope::new(root_scope_id, None);
 
-        let scopes = btreemap! { id_root_scope => root_scope };
+        let scopes = btreemap! { root_scope_id => root_scope };
         let lctx = Self {
             scopes,
             fndecls: BTreeMap::new(),
@@ -395,7 +395,7 @@ impl LoweringContext {
             id_gen,
         };
 
-        (lctx, id_root_scope)
+        (lctx, root_scope_id)
     }
 
     fn scope_mut(&mut self, id: ScopeId) -> &mut Scope {
@@ -406,18 +406,18 @@ impl LoweringContext {
 
     fn register_fndecl(
         &mut self,
-        curr_scope: ScopeId,
+        curr_scope_id: ScopeId,
         span: Span,
         name: Ident,
         params: Vec<Param>,
         ret_ty: Ty,
     ) -> (FnId, ScopeId) {
         // Prepare function
-        let id_new_fn = self.id_gen.gen_fn();
-        let id_new_scope = self.id_gen.gen_scope();
+        let new_fn_id = self.id_gen.gen_fn();
+        let new_scope_id = self.id_gen.gen_scope();
         let new_fn = FnDecl {
-            id: id_new_fn,
-            scope: curr_scope,
+            id: new_fn_id,
+            scope_id: curr_scope_id,
             span,
             name,
             params,
@@ -426,37 +426,35 @@ impl LoweringContext {
 
         // register this FnDecl
         assert!(
-            self.fndecls.insert(id_new_fn, new_fn).is_none(),
+            self.fndecls.insert(new_fn_id, new_fn).is_none(),
             "ID conflict for function {:?}",
-            id_new_fn
+            new_fn_id
         );
-        self.scope_mut(curr_scope).fn_ids.push(id_new_fn);
+        self.scope_mut(curr_scope_id).fn_ids.push(new_fn_id);
 
-        let new_scope = Scope::new(id_new_scope, Some(curr_scope));
-        self.scopes.insert(id_new_scope, new_scope);
+        let new_scope = Scope::new(new_scope_id, Some(curr_scope_id));
+        self.scopes.insert(new_scope_id, new_scope);
 
-        (id_new_fn, id_new_scope)
+        (new_fn_id, new_scope_id)
     }
 
-    fn register_fnbody(&mut self, curr_scope: ScopeId, reg_fn: FnId, body: FnBody) {
-        self.fnbodies.insert(reg_fn, body);
+    fn register_fnbody(&mut self, scope_id: ScopeId, reg_fn_id: FnId, body: FnBody) {
+        self.fnbodies.insert(reg_fn_id, body);
         debug_assert!(
-            self.scope_mut(curr_scope).fn_ids.contains(&reg_fn),
+            self.scope_mut(scope_id).fn_ids.contains(&reg_fn_id),
             "function body of undeclared function ({:?}) is registered",
-            reg_fn
+            reg_fn_id
         );
     }
 
-    fn lower_stmt(&mut self, curr_fn: FnId, curr_scope: ScopeId, stmt: &Ast<AstStmt>) -> Stmt {
+    fn lower_stmt(&mut self, fn_id: FnId, scope_id: ScopeId, stmt: &Ast<AstStmt>) -> Stmt {
         let lowered = match &stmt.ast {
-            AstStmt::FuncdefStmt(s) => {
-                StmtKind::FnDef(self.lower_fndef_stmt(curr_fn, curr_scope, s))
-            }
-            AstStmt::IfStmt(s) => StmtKind::If(self.lower_if_stmt(curr_fn, curr_scope, s)),
-            AstStmt::WhileStmt(s) => StmtKind::While(self.lower_while_stmt(curr_fn, curr_scope, s)),
-            AstStmt::BeginStmt(s) => StmtKind::Begin(self.lower_begin_stmt(curr_fn, curr_scope, s)),
-            AstStmt::AssgStmt(s) => StmtKind::Assg(self.lower_assg_stmt(curr_fn, curr_scope, s)),
-            AstStmt::DumpStmt(s) => StmtKind::Dump(self.lower_dump_stmt(curr_fn, curr_scope, s)),
+            AstStmt::FuncdefStmt(s) => StmtKind::FnDef(self.lower_fndef_stmt(fn_id, scope_id, s)),
+            AstStmt::IfStmt(s) => StmtKind::If(self.lower_if_stmt(fn_id, scope_id, s)),
+            AstStmt::WhileStmt(s) => StmtKind::While(self.lower_while_stmt(fn_id, scope_id, s)),
+            AstStmt::BeginStmt(s) => StmtKind::Begin(self.lower_begin_stmt(fn_id, scope_id, s)),
+            AstStmt::AssgStmt(s) => StmtKind::Assg(self.lower_assg_stmt(fn_id, scope_id, s)),
+            AstStmt::DumpStmt(s) => StmtKind::Dump(self.lower_dump_stmt(fn_id, scope_id, s)),
         };
 
         Stmt {
@@ -467,8 +465,8 @@ impl LoweringContext {
 
     fn lower_fndef_stmt(
         &mut self,
-        curr_fn: FnId,
-        curr_scope: ScopeId,
+        fn_id: FnId,
+        scope_id: ScopeId,
         stmt: &Ast<AstFuncdefStmt>,
     ) -> FnId {
         let mut params = vec![];
@@ -480,63 +478,58 @@ impl LoweringContext {
         {
             params.push(Param {
                 span: *span,
-                name: self.lower_ident(curr_fn, curr_scope, ident),
-                ty: self.lower_ty(curr_fn, curr_scope, ty),
+                name: self.lower_ident(fn_id, scope_id, ident),
+                ty: self.lower_ty(fn_id, scope_id, ty),
             });
             curr_param = &next;
         }
 
-        let ret_ty = self.lower_ty(curr_fn, curr_scope, &stmt.ast.ret_ty);
-        let ident = self.lower_ident(curr_fn, curr_scope, &stmt.ast.name);
-        let (new_fn, new_scope) =
-            self.register_fndecl(curr_scope, stmt.span, ident, params, ret_ty);
+        let ret_ty = self.lower_ty(fn_id, scope_id, &stmt.ast.ret_ty);
+        let ident = self.lower_ident(fn_id, scope_id, &stmt.ast.name);
+        let (new_fn_id, new_scope_id) =
+            self.register_fndecl(scope_id, stmt.span, ident, params, ret_ty);
 
         let body = FnBody {
-            id: new_fn,
-            stmt: Box::new(self.lower_begin_stmt(new_fn, new_scope, &stmt.ast.body)),
+            id: new_fn_id,
+            stmt: Box::new(self.lower_begin_stmt(new_fn_id, new_scope_id, &stmt.ast.body)),
         };
-        self.register_fnbody(curr_scope, new_fn, body);
+        self.register_fnbody(scope_id, new_fn_id, body);
 
-        new_fn
+        new_fn_id
     }
 
-    fn lower_if_stmt(
-        &mut self,
-        curr_fn: FnId,
-        curr_scope: ScopeId,
-        stmt: &Ast<AstIfStmt>,
-    ) -> IfStmt {
+    fn lower_if_stmt(&mut self, fn_id: FnId, scope_id: ScopeId, stmt: &Ast<AstIfStmt>) -> IfStmt {
         IfStmt {
             span: stmt.span,
-            cond: Box::new(self.lower_bool_expr(curr_fn, curr_scope, &stmt.ast.cond)),
-            then: Box::new(self.lower_stmt(curr_fn, curr_scope, &stmt.ast.then)),
-            otherwise: Box::new(self.lower_stmt(curr_fn, curr_scope, &stmt.ast.otherwise)),
+            cond: Box::new(self.lower_bool_expr(fn_id, scope_id, &stmt.ast.cond)),
+            then: Box::new(self.lower_stmt(fn_id, scope_id, &stmt.ast.then)),
+            otherwise: Box::new(self.lower_stmt(fn_id, scope_id, &stmt.ast.otherwise)),
         }
     }
 
     fn lower_while_stmt(
         &mut self,
-        curr_fn: FnId,
-        curr_scope: ScopeId,
+        fn_id: FnId,
+        scope_id: ScopeId,
         stmt: &Ast<AstWhileStmt>,
     ) -> WhileStmt {
         WhileStmt {
             span: stmt.span,
-            cond: Box::new(self.lower_bool_expr(curr_fn, curr_scope, &stmt.ast.cond)),
-            body: Box::new(self.lower_stmt(curr_fn, curr_scope, &stmt.ast.body)),
+            cond: Box::new(self.lower_bool_expr(fn_id, scope_id, &stmt.ast.cond)),
+            body: Box::new(self.lower_stmt(fn_id, scope_id, &stmt.ast.body)),
         }
     }
 
     fn lower_begin_stmt(
         &mut self,
-        curr_fn: FnId,
-        curr_scope: ScopeId,
+        fn_id: FnId,
+        scope_id: ScopeId,
         stmt: &Ast<AstBeginStmt>,
     ) -> BeginStmt {
         let mut stmts = vec![];
         let mut curr = &stmt.ast.list.ast;
         while let AstStmtList::Nonempty { stmt, next } = curr {
-            stmts.push(self.lower_stmt(curr_fn, curr_scope, stmt));
+            stmts.push(self.lower_stmt(fn_id, scope_id, stmt));
             curr = &next.ast;
         }
 
@@ -548,47 +541,47 @@ impl LoweringContext {
 
     fn lower_assg_stmt(
         &mut self,
-        curr_fn: FnId,
-        curr_scope: ScopeId,
+        fn_id: FnId,
+        scope_id: ScopeId,
         stmt: &Ast<AstAssgStmt>,
     ) -> AssgStmt {
         AssgStmt {
             span: stmt.span,
-            var: Box::new(self.lower_var(curr_fn, curr_scope, &stmt.ast.var)),
-            expr: Box::new(self.lower_arith_expr(curr_fn, curr_scope, &stmt.ast.expr)),
+            var: Box::new(self.lower_var(fn_id, scope_id, &stmt.ast.var)),
+            expr: Box::new(self.lower_arith_expr(fn_id, scope_id, &stmt.ast.expr)),
         }
     }
 
     fn lower_dump_stmt(
         &mut self,
-        curr_fn: FnId,
-        curr_scope: ScopeId,
+        fn_id: FnId,
+        scope_id: ScopeId,
         stmt: &Ast<AstDumpStmt>,
     ) -> DumpStmt {
         DumpStmt {
             span: stmt.span,
-            var: Box::new(self.lower_var(curr_fn, curr_scope, &stmt.ast.var)),
+            var: Box::new(self.lower_var(fn_id, scope_id, &stmt.ast.var)),
         }
     }
 
     fn lower_bool_expr(
         &mut self,
-        curr_fn: FnId,
-        curr_scope: ScopeId,
+        fn_id: FnId,
+        scope_id: ScopeId,
         expr: &Ast<AstBoolExpr>,
     ) -> BoolExpr {
         BoolExpr {
             span: expr.span,
-            op: Box::new(self.lower_compare_op(curr_fn, curr_scope, &expr.ast.op)),
-            lhs: Box::new(self.lower_arith_expr(curr_fn, curr_scope, &expr.ast.lhs)),
-            rhs: Box::new(self.lower_arith_expr(curr_fn, curr_scope, &expr.ast.rhs)),
+            op: Box::new(self.lower_compare_op(fn_id, scope_id, &expr.ast.op)),
+            lhs: Box::new(self.lower_arith_expr(fn_id, scope_id, &expr.ast.lhs)),
+            rhs: Box::new(self.lower_arith_expr(fn_id, scope_id, &expr.ast.rhs)),
         }
     }
 
     fn lower_compare_op(
         &mut self,
-        _curr_fn: FnId,
-        _curr_scope: ScopeId,
+        _fn_id: FnId,
+        _scope_id: ScopeId,
         op: &Ast<AstCompareOp>,
     ) -> CompareOp {
         let kind = match op.ast {
@@ -608,12 +601,12 @@ impl LoweringContext {
 
     fn lower_arith_expr(
         &mut self,
-        curr_fn: FnId,
-        curr_scope: ScopeId,
+        fn_id: FnId,
+        scope_id: ScopeId,
         expr: &Ast<AstArithExpr>,
     ) -> ArithExpr {
         match &expr.ast {
-            AstArithExpr::MulExpr(e) => self.lower_mul_expr(curr_fn, curr_scope, e),
+            AstArithExpr::MulExpr(e) => self.lower_mul_expr(fn_id, scope_id, e),
             AstArithExpr::Add(l, r) | AstArithExpr::Sub(l, r) => {
                 let op = match &expr.ast {
                     AstArithExpr::MulExpr(_) => unreachable!(),
@@ -622,8 +615,8 @@ impl LoweringContext {
                 };
                 let kind = ArithExprKind::BinOp(
                     op,
-                    Box::new(self.lower_arith_expr(curr_fn, curr_scope, l)),
-                    Box::new(self.lower_mul_expr(curr_fn, curr_scope, r)),
+                    Box::new(self.lower_arith_expr(fn_id, scope_id, l)),
+                    Box::new(self.lower_mul_expr(fn_id, scope_id, r)),
                 );
 
                 ArithExpr {
@@ -640,12 +633,12 @@ impl LoweringContext {
 
     fn lower_mul_expr(
         &mut self,
-        curr_fn: FnId,
-        curr_scope: ScopeId,
+        fn_id: FnId,
+        scope_id: ScopeId,
         expr: &Ast<AstMulExpr>,
     ) -> ArithExpr {
         match &expr.ast {
-            AstMulExpr::UnaryExpr(e) => self.lower_unary_expr(curr_fn, curr_scope, e),
+            AstMulExpr::UnaryExpr(e) => self.lower_unary_expr(fn_id, scope_id, e),
             AstMulExpr::Mul(l, r) | AstMulExpr::Div(l, r) => {
                 let op = match &expr.ast {
                     AstMulExpr::UnaryExpr(_) => unreachable!(),
@@ -654,8 +647,8 @@ impl LoweringContext {
                 };
                 let kind = ArithExprKind::BinOp(
                     op,
-                    Box::new(self.lower_mul_expr(curr_fn, curr_scope, l)),
-                    Box::new(self.lower_unary_expr(curr_fn, curr_scope, r)),
+                    Box::new(self.lower_mul_expr(fn_id, scope_id, l)),
+                    Box::new(self.lower_unary_expr(fn_id, scope_id, r)),
                 );
 
                 ArithExpr {
@@ -672,8 +665,8 @@ impl LoweringContext {
 
     fn lower_unary_expr(
         &mut self,
-        curr_fn: FnId,
-        curr_scope: ScopeId,
+        fn_id: FnId,
+        scope_id: ScopeId,
         expr: &Ast<AstUnaryExpr>,
     ) -> ArithExpr {
         match &expr.ast {
@@ -684,7 +677,7 @@ impl LoweringContext {
                     res: RefCell::new(ResolveStatus::Unknown),
                 },
                 kind: ArithExprKind::Primary(Box::new(
-                    self.lower_primary_expr(curr_fn, curr_scope, &e),
+                    self.lower_primary_expr(fn_id, scope_id, &e),
                 )),
             },
             AstUnaryExpr::Neg(e) => ArithExpr {
@@ -695,7 +688,7 @@ impl LoweringContext {
                 },
                 kind: ArithExprKind::UnaryOp(
                     UnaryOp::Neg,
-                    Box::new(self.lower_unary_expr(curr_fn, curr_scope, &e)),
+                    Box::new(self.lower_unary_expr(fn_id, scope_id, &e)),
                 ),
             },
         }
@@ -703,8 +696,8 @@ impl LoweringContext {
 
     fn lower_primary_expr(
         &mut self,
-        curr_fn: FnId,
-        curr_scope: ScopeId,
+        fn_id: FnId,
+        scope_id: ScopeId,
         expr: &Ast<AstPrimaryExpr>,
     ) -> PrimaryExpr {
         PrimaryExpr {
@@ -715,27 +708,22 @@ impl LoweringContext {
             },
             kind: match &expr.ast {
                 AstPrimaryExpr::Var(var) => {
-                    PrimaryExprKind::Var(Box::new(self.lower_var(curr_fn, curr_scope, var)))
+                    PrimaryExprKind::Var(Box::new(self.lower_var(fn_id, scope_id, var)))
                 }
                 AstPrimaryExpr::Const(cst) => {
-                    PrimaryExprKind::Const(Box::new(self.lower_const(curr_fn, curr_scope, cst)))
+                    PrimaryExprKind::Const(Box::new(self.lower_const(fn_id, scope_id, cst)))
                 }
                 AstPrimaryExpr::FnCall(call) => {
-                    PrimaryExprKind::FnCall(Box::new(self.lower_fncall(curr_fn, curr_scope, call)))
+                    PrimaryExprKind::FnCall(Box::new(self.lower_fncall(fn_id, scope_id, call)))
                 }
-                AstPrimaryExpr::Paren(expr) => PrimaryExprKind::Paren(Box::new(
-                    self.lower_arith_expr(curr_fn, curr_scope, expr),
-                )),
+                AstPrimaryExpr::Paren(expr) => {
+                    PrimaryExprKind::Paren(Box::new(self.lower_arith_expr(fn_id, scope_id, expr)))
+                }
             },
         }
     }
 
-    fn lower_fncall(
-        &mut self,
-        curr_fn: FnId,
-        curr_scope: ScopeId,
-        call: &Ast<AstFnCall>,
-    ) -> FnCall {
+    fn lower_fncall(&mut self, fn_id: FnId, scope_id: ScopeId, call: &Ast<AstFnCall>) -> FnCall {
         let mut args = vec![];
         let mut curr_arg = &*call.ast.args;
         while let Ast {
@@ -743,7 +731,7 @@ impl LoweringContext {
             ..
         } = curr_arg
         {
-            args.push(self.lower_arith_expr(curr_fn, curr_scope, expr));
+            args.push(self.lower_arith_expr(fn_id, scope_id, expr));
             curr_arg = &next;
         }
 
@@ -751,15 +739,15 @@ impl LoweringContext {
             span: call.span,
             span_name: call.ast.ident.span,
             res: RefCell::new(ResolveStatus::Unresolved(self.lower_ident(
-                curr_fn,
-                curr_scope,
+                fn_id,
+                scope_id,
                 &call.ast.ident,
             ))),
             args,
         }
     }
 
-    fn lower_const(&mut self, _curr_fn: FnId, _curr_scope: ScopeId, cst: &Ast<AstConst>) -> Const {
+    fn lower_const(&mut self, _fn_id: FnId, _scope_id: ScopeId, cst: &Ast<AstConst>) -> Const {
         let (ty, value) = match &cst.ast {
             AstConst::Int(v) => (
                 Ty {
@@ -783,34 +771,29 @@ impl LoweringContext {
         }
     }
 
-    fn lower_var(&mut self, curr_fn: FnId, curr_scope: ScopeId, var: &Ast<AstVar>) -> Var {
+    fn lower_var(&mut self, fn_id: FnId, scope_id: ScopeId, var: &Ast<AstVar>) -> Var {
         Var {
             span: var.span,
             ty: Ty {
                 span: var.span,
                 res: RefCell::new(ResolveStatus::Unknown),
             },
-            name: self.lower_ident(curr_fn, curr_scope, var.ast.ident()),
+            name: self.lower_ident(fn_id, scope_id, var.ast.ident()),
         }
     }
 
-    fn lower_ty(&mut self, curr_fn: FnId, curr_scope: ScopeId, ty: &Ast<AstTy>) -> Ty {
+    fn lower_ty(&mut self, fn_id: FnId, scope_id: ScopeId, ty: &Ast<AstTy>) -> Ty {
         Ty {
             span: ty.span,
             res: RefCell::new(ResolveStatus::Unresolved(self.lower_ident(
-                curr_fn,
-                curr_scope,
+                fn_id,
+                scope_id,
                 ty.ast.ident(),
             ))),
         }
     }
 
-    fn lower_ident(
-        &mut self,
-        _curr_fn: FnId,
-        _curr_scope: ScopeId,
-        ident: &Ast<AstIdent>,
-    ) -> Ident {
+    fn lower_ident(&mut self, _fn_id: FnId, _scope_id: ScopeId, ident: &Ast<AstIdent>) -> Ident {
         Ident {
             span: ident.span,
             ident: ident.ast.ident().to_owned(),
