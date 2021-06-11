@@ -5,7 +5,7 @@ use crate::span::Span;
 use std::collections::BTreeSet;
 
 #[derive(thiserror::Error, Debug)]
-#[error("{span}: {kind}")]
+#[error("{span:?}: {kind}")]
 pub struct ResolverError {
     pub span: Span,
     pub kind: ResolverErrorKind,

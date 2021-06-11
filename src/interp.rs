@@ -11,7 +11,7 @@ use std::{fmt, io};
 pub type Result<T, E = InterpError> = std::result::Result<T, E>;
 
 #[derive(thiserror::Error, Debug)]
-#[error("{span}: {kind}")]
+#[error("{span:?}: {kind}")]
 pub struct InterpError {
     pub span: Span,
     pub kind: InterpErrorKind,
@@ -514,8 +514,8 @@ impl<'a> State<'a> {
     }
 
     fn run_dump_stmt(&mut self, stmt: &'a Ast<AstDumpStmt>) -> Result<()> {
-        let name = stmt.ast.var.ast.ident();
-        let value = self.get_var(stmt.span, name.ast.ident())?;
+        let name = stmt.ast.var.ast.ident().ast.ident();
+        let value = self.get_var(stmt.span, name)?;
         println!("dump: {} = {}", name, value);
 
         Ok(())
@@ -546,7 +546,7 @@ impl<'a> State<'a> {
             Err(InterpError {
                 span: expr.ast.lhs.span,
                 kind: InterpErrorKind::UnsupportedBinaryOperation {
-                    op: expr.ast.op.ast.to_string(),
+                    op: expr.ast.op.ast.symbol().to_owned(),
                     ty: lhs.ty(),
                 },
             })

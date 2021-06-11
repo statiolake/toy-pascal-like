@@ -10,7 +10,7 @@ pub struct Hint {
 }
 
 #[derive(thiserror::Error, Debug)]
-#[error("{span}: {kind}")]
+#[error("{span:?}: {kind}")]
 pub struct ParserError<'i> {
     pub span: Span,
     pub kind: ParserErrorKind<'i>,

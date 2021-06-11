@@ -168,12 +168,13 @@ fn main() {
     };
 
     println!("--- ast ---");
-    println!("{}", ast);
+    println!("{:#?}", ast);
     println!();
 
     let hir = lower_ast(&ast);
     println!("--- hir ---");
     println!("{:#?}", hir);
+    println!();
 
     let rhir = match resolve_progam(hir) {
         Ok(resolved) => resolved,
@@ -186,6 +187,7 @@ fn main() {
     };
     println!("--- resolved hir ---");
     println!("{:#?}", rhir);
+    println!();
 
     println!("--- run ---");
     let state = match run(&ast) {
