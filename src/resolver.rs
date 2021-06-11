@@ -1,14 +1,14 @@
 use crate::hir::*;
 use crate::hir_visit;
-use crate::hir_visit::VisitMut;
+use crate::hir_visit::Visit;
 use crate::span::Span;
 use std::collections::HashMap;
 
 #[derive(thiserror::Error, Debug)]
 #[error("{span}: {kind}")]
 pub struct ResolverError {
-    span: Span,
-    kind: ResolverErrorKind,
+    pub span: Span,
+    pub kind: ResolverErrorKind,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -45,6 +45,10 @@ impl ResolverErrorKind {
 
 pub type Result<T, E = ResolverError> = std::result::Result<T, E>;
 
+pub fn resolve_progam(prog: Program) -> Result<Program> {
+    Resolver::from_program(prog).resolve()
+}
+
 #[derive(Debug)]
 pub struct Resolver {
     prog: Program,
@@ -65,10 +69,10 @@ impl Resolver {
 
 macro_rules! unwrap_resolved {
     ($res:expr) => {
-        match $res {
+        match &*$res {
             ResolveStatus::Resolved(v) => v,
             ResolveStatus::Unresolved(ident) => {
-                panic!("internal error: type {} is not resolved yet?")
+                panic!("internal error: type {} is not resolved yet?", ident.ident)
             }
             ResolveStatus::Unknown => panic!("internal error: type is not inferred yet?"),
         }
@@ -100,13 +104,13 @@ macro_rules! return_err {
 }
 
 impl Resolver {
-    fn resolve_all(&mut self) -> Result<()> {
+    fn resolve_all(&self) -> Result<()> {
         let mut visitor = ResolverVisitor {
             prog: &self.prog,
             locals: HashMap::new(),
             err: None,
         };
-        visitor.visit_all(&mut self.prog);
+        visitor.visit_all(&self.prog);
         return match visitor.err {
             None => Ok(()),
             Some(err) => Err(err),
@@ -118,11 +122,11 @@ impl Resolver {
             err: Option<ResolverError>,
         }
 
-        fn resolve_primitive(ty: &mut Ty) -> Result<()> {
-            if let ResolveStatus::Unresolved(name) = ty.res {
+        fn resolve_primitive(ty: &Ty) -> Result<()> {
+            if let ResolveStatus::Unresolved(name) = ty.res.borrow().clone() {
                 match &*name.ident {
-                    "int" => ty.res = ResolveStatus::Resolved(TyKind::Int),
-                    "float" => ty.res = ResolveStatus::Resolved(TyKind::Float),
+                    "int" => *ty.res.borrow_mut() = ResolveStatus::Resolved(TyKind::Int),
+                    "float" => *ty.res.borrow_mut() = ResolveStatus::Resolved(TyKind::Float),
                     _ => {
                         return Err(ResolverError {
                             span: ty.span,
@@ -137,15 +141,15 @@ impl Resolver {
             Ok(())
         }
 
-        impl VisitMut for ResolverVisitor<'_> {
-            fn visit_fndecl(&mut self, fndecl: &mut FnDecl) {
+        impl Visit for ResolverVisitor<'_> {
+            fn visit_fndecl(&mut self, fndecl: &FnDecl) {
                 stop_if_err!(self.err);
                 hir_visit::visit_fndecl(self, fndecl);
                 stop_if_err!(self.err);
-                return_if_err!(self, resolve_primitive(&mut fndecl.ret_ty));
+                return_if_err!(self, resolve_primitive(&fndecl.ret_ty));
             }
 
-            fn visit_fnbody(&mut self, fnbody: &mut FnBody) {
+            fn visit_fnbody(&mut self, fnbody: &FnBody) {
                 stop_if_err!(self.err);
                 // set up new local variable tables
                 self.locals = HashMap::new();
@@ -153,26 +157,26 @@ impl Resolver {
                 stop_if_err!(self.err);
             }
 
-            fn visit_param(&mut self, param: &mut Param) {
+            fn visit_param(&mut self, param: &Param) {
                 stop_if_err!(self.err);
                 hir_visit::visit_param(self, param);
                 stop_if_err!(self.err);
-                return_if_err!(self, resolve_primitive(&mut param.ty));
+                return_if_err!(self, resolve_primitive(&param.ty));
             }
 
-            fn visit_assg_stmt(&mut self, stmt: &mut AssgStmt) {
+            fn visit_assg_stmt(&mut self, stmt: &AssgStmt) {
                 stop_if_err!(self.err);
                 // You can't use hir_visit::visit_assg_stmt(), because you need to declare the
                 // variable if it's not declared. But to infer the type of declared variable, you
                 // need to first check type of the assigning expr.
-                self.visit_arith_expr(&mut stmt.expr);
+                self.visit_arith_expr(&stmt.expr);
                 stop_if_err!(self.err);
 
-                let ty_expr = unwrap_resolved!(stmt.expr.ty.res);
-                let (span, ty_var) = self
+                let ty_expr = unwrap_resolved!(stmt.expr.ty.res.borrow()).clone();
+                let (_, ty_var) = self
                     .locals
                     .entry(stmt.var.name.ident.clone())
-                    .or_insert_with(|| (stmt.var.span, ty_expr));
+                    .or_insert_with(|| (stmt.var.span, ty_expr.clone()));
                 let ty_var = ty_var.clone();
 
                 if ty_var != ty_expr {
@@ -189,20 +193,22 @@ impl Resolver {
                 }
             }
 
-            fn visit_arith_expr(&mut self, expr: &mut ArithExpr) {
+            fn visit_arith_expr(&mut self, expr: &ArithExpr) {
                 stop_if_err!(self.err);
                 hir_visit::visit_arith_expr(self, expr);
                 stop_if_err!(self.err);
                 match &expr.kind {
                     ArithExprKind::Primary(e) => {
-                        expr.ty.res = ResolveStatus::Resolved(unwrap_resolved!(e.ty.res));
+                        *expr.ty.res.borrow_mut() =
+                            ResolveStatus::Resolved(unwrap_resolved!(e.ty.res.borrow()).clone());
                     }
                     ArithExprKind::UnaryOp(_, e) => {
-                        expr.ty.res = ResolveStatus::Resolved(unwrap_resolved!(e.ty.res));
+                        *expr.ty.res.borrow_mut() =
+                            ResolveStatus::Resolved(unwrap_resolved!(e.ty.res.borrow()).clone());
                     }
                     ArithExprKind::BinOp(_, l, r) => {
-                        let lt = unwrap_resolved!(l.ty.res);
-                        let rt = unwrap_resolved!(r.ty.res);
+                        let lt = unwrap_resolved!(l.ty.res.borrow()).clone();
+                        let rt = unwrap_resolved!(r.ty.res.borrow()).clone();
 
                         if lt != rt {
                             return_err!(
@@ -220,37 +226,42 @@ impl Resolver {
                 }
             }
 
-            fn visit_primary_expr(&mut self, expr: &mut PrimaryExpr) {
+            fn visit_primary_expr(&mut self, expr: &PrimaryExpr) {
                 stop_if_err!(self.err);
                 hir_visit::visit_primary_expr(self, expr);
                 stop_if_err!(self.err);
 
-                match expr.kind {
+                match &expr.kind {
                     PrimaryExprKind::Var(v) => {
-                        expr.ty.res = ResolveStatus::Resolved(unwrap_resolved!(v.ty.res));
+                        *expr.ty.res.borrow_mut() =
+                            ResolveStatus::Resolved(unwrap_resolved!(v.ty.res.borrow()).clone());
                     }
                     PrimaryExprKind::Const(c) => {
-                        expr.ty.res = ResolveStatus::Resolved(unwrap_resolved!(c.ty.res));
+                        *expr.ty.res.borrow_mut() =
+                            ResolveStatus::Resolved(unwrap_resolved!(c.ty.res.borrow()).clone());
                     }
                     PrimaryExprKind::FnCall(fc) => {
-                        let id = unwrap_resolved!(fc.res);
+                        let id = unwrap_resolved!(fc.res.borrow()).clone();
                         let fndecl = self.prog.fndecl(id);
-                        expr.ty.res = ResolveStatus::Resolved(unwrap_resolved!(fndecl.ret_ty.res));
+                        *expr.ty.res.borrow_mut() = ResolveStatus::Resolved(
+                            unwrap_resolved!(fndecl.ret_ty.res.borrow()).clone(),
+                        );
                     }
                     PrimaryExprKind::Paren(e) => {
-                        expr.ty.res = ResolveStatus::Resolved(unwrap_resolved!(e.ty.res));
+                        *expr.ty.res.borrow_mut() =
+                            ResolveStatus::Resolved(unwrap_resolved!(e.ty.res.borrow()).clone());
                     }
                 }
             }
 
-            fn visit_var(&mut self, var: &mut Var) {
+            fn visit_var(&mut self, var: &Var) {
                 stop_if_err!(self.err);
                 hir_visit::visit_var(self, var);
                 stop_if_err!(self.err);
 
                 match self.locals.get(&var.name.ident) {
                     Some((_, res)) => {
-                        var.ty.res = ResolveStatus::Resolved(res.clone());
+                        *var.ty.res.borrow_mut() = ResolveStatus::Resolved(res.clone());
                     }
                     None => {
                         return_err!(
@@ -266,12 +277,12 @@ impl Resolver {
                 }
             }
 
-            fn visit_fncall(&mut self, fncall: &mut FnCall) {
+            fn visit_fncall(&mut self, fncall: &FnCall) {
                 stop_if_err!(self.err);
                 hir_visit::visit_fncall(self, fncall);
                 stop_if_err!(self.err);
 
-                if let ResolveStatus::Unresolved(name) = fncall.res {
+                if let ResolveStatus::Unresolved(name) = fncall.res.borrow().clone() {
                     let fndecl = self
                         .prog
                         .fndecls
@@ -291,19 +302,16 @@ impl Resolver {
                             );
                         }
                     };
-                    fncall.res = ResolveStatus::Resolved(fndecl.id);
+                    *fncall.res.borrow_mut() = ResolveStatus::Resolved(fndecl.id);
                 }
             }
         }
     }
 
-    fn validate(&mut self) {
+    fn validate(&self) {
         let mut visitor = ValidatorVisitor;
-        visitor.visit_all(&mut self.prog);
-
+        visitor.visit_all(&self.prog);
         struct ValidatorVisitor;
-
-        // FIXME: It doesn't have to be mut but use it until we prepare non-mut version of Visitor.
-        impl VisitMut for ValidatorVisitor {}
+        impl Visit for ValidatorVisitor {}
     }
 }

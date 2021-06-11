@@ -1,9 +1,11 @@
 use itertools::Itertools as _;
 use once_cell::sync::Lazy;
+use pascal_like::hir::lower_ast;
 use pascal_like::interp::run;
 use pascal_like::interp::InterpError;
 use pascal_like::lexer::tokenize;
 use pascal_like::parser::{parse, ParserError};
+use pascal_like::resolver::{resolve_progam, ResolverError};
 use pascal_like::span::Span;
 use std::cmp::min;
 use std::io::prelude::*;
@@ -116,6 +118,19 @@ fn print_parser_error(filename: &str, source: &str, err: &ParserError) {
     }
 }
 
+fn print_resolver_error(filename: &str, source: &str, err: &ResolverError) {
+    eprint!(&*COLOR_ERROR => "runtime error:");
+    eprint!(" ");
+    eprintln!(&*COLOR_MESSAGE => "{}", err.kind);
+    show_span(filename, source, err.span, &err.kind.summary());
+
+    // for hint in &err.kind.hints() {
+    //     eprint!(&*COLOR_INFO => "hint:");
+    //     eprint!(" ");
+    //     eprintln!("{}", hint);
+    // }
+}
+
 fn print_interpreter_error(filename: &str, source: &str, err: &InterpError) {
     eprint!(&*COLOR_ERROR => "runtime error:");
     eprint!(" ");
@@ -155,6 +170,17 @@ fn main() {
     println!("--- ast ---");
     println!("{}", ast);
     println!();
+
+    let hir = lower_ast(&ast);
+    let thir = match resolve_progam(hir) {
+        Ok(resolved) => resolved,
+        Err(err) => {
+            print_resolver_error(&filename, &source, &err);
+            return;
+        }
+    };
+    println!("--- typed hir ---");
+    println!("{:?}", thir);
 
     println!("--- run ---");
     let state = match run(&ast) {

@@ -1,7 +1,7 @@
 use crate::ast::*;
 use crate::span::Span;
-use itertools::Itertools as _;
 use maplit::hashmap;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -21,7 +21,7 @@ pub fn lower_ast(stmt: &Ast<AstStmt>) -> Program {
         vec![],
         Ty {
             span: Span::new_zero(),
-            res: ResolveStatus::Resolved(TyKind::Void),
+            res: RefCell::new(ResolveStatus::Resolved(TyKind::Void)),
         },
     );
 
@@ -89,13 +89,13 @@ impl Program {
     pub fn fndecl(&self, id: ItemId) -> &FnDecl {
         self.fndecls
             .get(&id)
-            .unwrap_or_else(|| panic!("function {:?} not registered"))
+            .unwrap_or_else(|| panic!("function {:?} not registered", id))
     }
 
     pub fn fnbody(&self, id: ItemId) -> &FnBody {
         self.fnbodies
             .get(&id)
-            .unwrap_or_else(|| panic!("function {:?} not registered"))
+            .unwrap_or_else(|| panic!("function {:?} not registered", id))
     }
 
     pub fn scope_mut(&mut self, id: ScopeId) -> &mut Scope {
@@ -107,13 +107,13 @@ impl Program {
     pub fn fndecl_mut(&mut self, id: ItemId) -> &mut FnDecl {
         self.fndecls
             .get_mut(&id)
-            .unwrap_or_else(|| panic!("function {:?} not registered"))
+            .unwrap_or_else(|| panic!("function {:?} not registered", id))
     }
 
     pub fn fnbody_mut(&mut self, id: ItemId) -> &mut FnBody {
         self.fnbodies
             .get_mut(&id)
-            .unwrap_or_else(|| panic!("function {:?} not registered"))
+            .unwrap_or_else(|| panic!("function {:?} not registered", id))
     }
 }
 
@@ -193,7 +193,7 @@ pub enum ResolveStatus<T: Clone> {
 #[derive(Debug, Clone)]
 pub struct Ty {
     pub span: Span,
-    pub res: ResolveStatus<TyKind>,
+    pub res: RefCell<ResolveStatus<TyKind>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -358,7 +358,7 @@ pub enum Value {
 pub struct FnCall {
     pub span: Span,
     pub span_name: Span,
-    pub res: ResolveStatus<ItemId>,
+    pub res: RefCell<ResolveStatus<ItemId>>,
     pub args: Vec<ArithExpr>,
 }
 
@@ -392,18 +392,6 @@ impl LoweringContext {
         self.scopes
             .get_mut(&id)
             .unwrap_or_else(|| panic!("scope {:?} not registered", id))
-    }
-
-    fn fndecl_mut(&mut self, id: ItemId) -> &mut FnDecl {
-        self.fndecls
-            .get_mut(&id)
-            .unwrap_or_else(|| panic!("function {:?} not registered"))
-    }
-
-    fn fnbody_mut(&mut self, id: ItemId) -> &mut FnBody {
-        self.fnbodies
-            .get_mut(&id)
-            .unwrap_or_else(|| panic!("function {:?} not registered"))
     }
 
     fn register_fndecl(
@@ -487,16 +475,9 @@ impl LoweringContext {
         }
 
         let ret_ty = self.lower_ty(curr_fn, curr_scope, &stmt.ast.ret_ty);
-        let new_fn = self.id_gen.gen_item();
-        let new_scope = self.id_gen.gen_scope();
-
-        let (new_fn, new_scope) = self.register_fndecl(
-            curr_scope,
-            stmt.span,
-            self.lower_ident(curr_fn, curr_scope, &stmt.ast.name),
-            params,
-            ret_ty,
-        );
+        let ident = self.lower_ident(curr_fn, curr_scope, &stmt.ast.name);
+        let (new_fn, new_scope) =
+            self.register_fndecl(curr_scope, stmt.span, ident, params, ret_ty);
 
         let body = FnBody {
             stmt: Box::new(self.lower_begin(new_fn, new_scope, &stmt.ast.body)),
@@ -588,8 +569,8 @@ impl LoweringContext {
 
     fn lower_compare_op(
         &mut self,
-        curr_fn: ItemId,
-        curr_scope: ScopeId,
+        _curr_fn: ItemId,
+        _curr_scope: ScopeId,
         op: &Ast<AstCompareOp>,
     ) -> CompareOp {
         let kind = match op.ast {
@@ -632,7 +613,7 @@ impl LoweringContext {
                     kind,
                     ty: Ty {
                         span: expr.span,
-                        res: ResolveStatus::Unknown,
+                        res: RefCell::new(ResolveStatus::Unknown),
                     },
                 }
             }
@@ -664,7 +645,7 @@ impl LoweringContext {
                     kind,
                     ty: Ty {
                         span: expr.span,
-                        res: ResolveStatus::Unknown,
+                        res: RefCell::new(ResolveStatus::Unknown),
                     },
                 }
             }
@@ -682,7 +663,7 @@ impl LoweringContext {
                 span: expr.span,
                 ty: Ty {
                     span: expr.span,
-                    res: ResolveStatus::Unknown,
+                    res: RefCell::new(ResolveStatus::Unknown),
                 },
                 kind: ArithExprKind::Primary(Box::new(
                     self.lower_primary_expr(curr_fn, curr_scope, &e),
@@ -692,7 +673,7 @@ impl LoweringContext {
                 span: expr.span,
                 ty: Ty {
                     span: expr.span,
-                    res: ResolveStatus::Unknown,
+                    res: RefCell::new(ResolveStatus::Unknown),
                 },
                 kind: ArithExprKind::UnaryOp(
                     UnaryOp::Neg,
@@ -712,7 +693,7 @@ impl LoweringContext {
             span: expr.span,
             ty: Ty {
                 span: expr.span,
-                res: ResolveStatus::Unknown,
+                res: RefCell::new(ResolveStatus::Unknown),
             },
             kind: match &expr.ast {
                 AstPrimaryExpr::Var(var) => {
@@ -740,8 +721,8 @@ impl LoweringContext {
         let mut args = vec![];
         let mut curr_arg = &*call.ast.args;
         while let Ast {
-            span,
             ast: AstArgumentList::Nonempty { expr, next },
+            ..
         } = curr_arg
         {
             args.push(self.lower_arith_expr(curr_fn, curr_scope, expr));
@@ -751,24 +732,33 @@ impl LoweringContext {
         FnCall {
             span: call.span,
             span_name: call.ast.ident.span,
-            res: ResolveStatus::Unresolved(self.lower_ident(curr_fn, curr_scope, &call.ast.ident)),
+            res: RefCell::new(ResolveStatus::Unresolved(self.lower_ident(
+                curr_fn,
+                curr_scope,
+                &call.ast.ident,
+            ))),
             args,
         }
     }
 
-    fn lower_const(&mut self, curr_fn: ItemId, curr_scope: ScopeId, cst: &Ast<AstConst>) -> Const {
+    fn lower_const(
+        &mut self,
+        _curr_fn: ItemId,
+        _curr_scope: ScopeId,
+        cst: &Ast<AstConst>,
+    ) -> Const {
         let (ty, value) = match &cst.ast {
             AstConst::Int(v) => (
                 Ty {
                     span: cst.span,
-                    res: ResolveStatus::Resolved(TyKind::Int),
+                    res: RefCell::new(ResolveStatus::Resolved(TyKind::Int)),
                 },
                 Value::Int(*v),
             ),
             AstConst::Float(v) => (
                 Ty {
                     span: cst.span,
-                    res: ResolveStatus::Resolved(TyKind::Float),
+                    res: RefCell::new(ResolveStatus::Resolved(TyKind::Float)),
                 },
                 Value::Float(*v),
             ),
@@ -785,7 +775,7 @@ impl LoweringContext {
             span: var.span,
             ty: Ty {
                 span: var.span,
-                res: ResolveStatus::Unknown,
+                res: RefCell::new(ResolveStatus::Unknown),
             },
             name: self.lower_ident(curr_fn, curr_scope, var.ast.ident()),
         }
@@ -794,14 +784,18 @@ impl LoweringContext {
     fn lower_ty(&mut self, curr_fn: ItemId, curr_scope: ScopeId, ty: &Ast<AstTy>) -> Ty {
         Ty {
             span: ty.span,
-            res: ResolveStatus::Unresolved(self.lower_ident(curr_fn, curr_scope, ty.ast.ident())),
+            res: RefCell::new(ResolveStatus::Unresolved(self.lower_ident(
+                curr_fn,
+                curr_scope,
+                ty.ast.ident(),
+            ))),
         }
     }
 
     fn lower_ident(
         &mut self,
-        curr_fn: ItemId,
-        curr_scope: ScopeId,
+        _curr_fn: ItemId,
+        _curr_scope: ScopeId,
         ident: &Ast<AstIdent>,
     ) -> Ident {
         Ident {
