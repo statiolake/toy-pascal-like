@@ -1,5 +1,6 @@
 use itertools::Itertools as _;
 use once_cell::sync::Lazy;
+use pascal_like::builtins;
 use pascal_like::hir::lower_ast;
 use pascal_like::interp::{run, InterpError};
 use pascal_like::lexer::tokenize;
@@ -184,7 +185,8 @@ fn main() {
     println!("{:#?}", ast);
     println!();
 
-    let hir = lower_ast(&ast);
+    let builtins = builtins::populate_builtins();
+    let hir = lower_ast(&ast, builtins);
     println!("--- hir ---");
     println!("{:#?}", hir);
     println!();
@@ -215,16 +217,18 @@ fn main() {
     println!("{:#?}", thir);
     println!();
 
-    // println!("--- run ---");
-    // let state = match run(&ast) {
-    //     Ok(state) => state,
-    //     Err(err) => {
-    //         print_interpreter_error(&filename, &source, &err);
-    //         return;
-    //     }
-    // };
-    // println!();
-    //
-    // println!("--- final state ---");
-    // state.display();
+    if false {
+        println!("--- run ---");
+        let state = match run(&ast) {
+            Ok(state) => state,
+            Err(err) => {
+                print_interpreter_error(&filename, &source, &err);
+                return;
+            }
+        };
+        println!();
+
+        println!("--- final state ---");
+        state.display();
+    }
 }

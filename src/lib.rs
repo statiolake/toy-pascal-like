@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod builtins;
 pub mod hir;
 pub mod hir_visit;
 pub mod interp;

@@ -108,8 +108,8 @@ pub enum FnBodyKind {
 impl fmt::Debug for FnBodyKind {
     fn fmt(&self, b: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FnBodyKind::Stmt(stmt) => write!(b, "FnBodyKind::Stmt({:?})", stmt),
-            FnBodyKind::Builtin(_) => write!(b, "FnBodyKind::Builtin(_)"),
+            FnBodyKind::Stmt(stmt) => b.debug_tuple("Stmt").field(&stmt).finish(),
+            FnBodyKind::Builtin(_) => b.debug_tuple("Builtin").field(&format_args!("_")).finish(),
         }
     }
 }

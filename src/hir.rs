@@ -1,5 +1,7 @@
 use crate::ast::*;
+use crate::builtins::Builtin;
 use crate::span::Span;
+use itertools::Itertools;
 use maplit::btreemap;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -7,8 +9,8 @@ use std::fmt;
 
 const SCRIPT_ROOT_FN_NAME: &str = "__start";
 
-pub fn lower_ast(stmt: &Ast<AstBeginStmt>) -> Program {
-    let (mut lctx, root_scope_id) = LoweringContext::new();
+pub fn lower_ast(stmt: &Ast<AstBeginStmt>, builtins: Vec<Builtin>) -> Program {
+    let (mut lctx, root_scope_id) = LoweringContext::with_builtins(builtins);
 
     // register script root function
     let (start_fn_id, start_scope_id) = lctx.register_fndecl(
@@ -259,8 +261,8 @@ pub enum FnBodyKind {
 impl fmt::Debug for FnBodyKind {
     fn fmt(&self, b: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FnBodyKind::Stmt(stmt) => write!(b, "FnBodyKind::Stmt({:?})", stmt),
-            FnBodyKind::Builtin(_) => write!(b, "FnBodyKind::Builtin(_)"),
+            FnBodyKind::Stmt(stmt) => b.debug_tuple("Stmt").field(&stmt).finish(),
+            FnBodyKind::Builtin(_) => b.debug_tuple("Builtin").field(&format_args!("_")).finish(),
         }
     }
 }
@@ -438,6 +440,48 @@ impl LoweringContext {
             fnbodies: BTreeMap::new(),
             id_gen,
         };
+
+        (lctx, root_scope_id)
+    }
+
+    fn with_builtins(builtins: Vec<Builtin>) -> (Self, ScopeId) {
+        let (mut lctx, root_scope_id) = Self::new();
+
+        for builtin in builtins {
+            let Builtin {
+                name,
+                params,
+                ret_ty,
+                body,
+            } = builtin;
+
+            let name = Ident {
+                span: Span::new_zero(),
+                ident: name,
+            };
+            let params = params
+                .into_iter()
+                .map(|(name, ty_kind)| Param {
+                    span: Span::new_zero(),
+                    name: Ident {
+                        span: Span::new_zero(),
+                        ident: name,
+                    },
+                    ty: Ty {
+                        span: Span::new_zero(),
+                        res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(ty_kind))),
+                    },
+                })
+                .collect_vec();
+            let ret_ty = Ty {
+                span: Span::new_zero(),
+                res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(ret_ty))),
+            };
+
+            let (fn_id, _) =
+                lctx.register_fndecl(root_scope_id, Span::new_zero(), name, params, ret_ty);
+            lctx.register_fnbody(root_scope_id, fn_id, body);
+        }
 
         (lctx, root_scope_id)
     }
