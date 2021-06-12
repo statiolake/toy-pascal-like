@@ -452,7 +452,7 @@ impl LoweringContext {
                 name,
                 params,
                 ret_ty,
-                body,
+                body_kind,
             } = builtin;
 
             let name = Ident {
@@ -478,9 +478,17 @@ impl LoweringContext {
                 res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(ret_ty))),
             };
 
-            let (fn_id, _) =
+            let (fn_id, inner_scope_id) =
                 lctx.register_fndecl(root_scope_id, Span::new_zero(), name, params, ret_ty);
-            lctx.register_fnbody(root_scope_id, fn_id, body);
+            lctx.register_fnbody(
+                root_scope_id,
+                fn_id,
+                FnBody {
+                    id: fn_id,
+                    inner_scope_id,
+                    kind: body_kind,
+                },
+            );
         }
 
         (lctx, root_scope_id)

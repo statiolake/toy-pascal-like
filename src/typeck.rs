@@ -106,8 +106,6 @@ impl TypeChecker {
                 let scope = self.prog.scope(self.scope_id);
                 let var = scope.var(stmt.var.res);
 
-                *var.ty.res.borrow_mut() = TypeckStatus::Err;
-
                 // check lhs and rhs types match
                 let rt = stmt.expr.ty.res.borrow().clone();
                 let rt = match rt {
@@ -355,7 +353,7 @@ impl TypeChecker {
             match res.into_inner() {
                 TypeckStatus::Revealed(ty) => ty,
                 TypeckStatus::Infer => panic!("internal error: type not inferred yet"),
-                TypeckStatus::Err => panic!(concat!("internal error: typeck error not reported")),
+                TypeckStatus::Err => panic!("internal error: typeck error not reported"),
             }
         }
 
