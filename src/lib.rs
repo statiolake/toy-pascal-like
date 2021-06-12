@@ -5,6 +5,7 @@ pub mod interp;
 pub mod lexer;
 pub mod parser;
 pub mod resolver;
+pub mod rhir;
 pub mod span;
 // pub mod typeck;
 

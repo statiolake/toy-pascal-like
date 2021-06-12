@@ -1,8 +1,11 @@
 use crate::hir::*;
 use crate::hir_visit;
 use crate::hir_visit::Visit;
+use crate::rhir;
 use crate::span::Span;
-use std::collections::BTreeSet;
+use itertools::Itertools as _;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(thiserror::Error, Debug)]
 #[error("{span:?}: {kind}")]
@@ -44,7 +47,7 @@ impl ResolverErrorKind {
 
 pub type Result<T, E = ResolverError> = std::result::Result<T, E>;
 
-pub fn resolve_progam(prog: Program) -> Result<Program, Vec<ResolverError>> {
+pub fn resolve_progam(prog: Program) -> Result<rhir::Program, Vec<ResolverError>> {
     Resolver::from_program(prog).resolve()
 }
 
@@ -58,11 +61,11 @@ impl Resolver {
         Self { prog }
     }
 
-    pub fn resolve(self) -> Result<Program, Vec<ResolverError>> {
+    pub fn resolve(self) -> Result<rhir::Program, Vec<ResolverError>> {
         self.resolve_all()?;
         self.validate();
 
-        Ok(self.prog)
+        Ok(self.into_rhir())
     }
 }
 
@@ -282,5 +285,283 @@ impl Resolver {
         visitor.visit_all(&self.prog);
         struct ValidatorVisitor;
         impl Visit for ValidatorVisitor {}
+    }
+}
+
+impl Resolver {
+    fn into_rhir(self) -> rhir::Program {
+        let Program {
+            scopes,
+            start_fn_id,
+            fndecls,
+            fnbodies,
+        } = self.prog;
+
+        let scopes = convert_scopes(scopes);
+        let fndecls = convert_fndecls(fndecls);
+        let fnbodies = convert_fnbodies(fnbodies);
+
+        return rhir::Program {
+            scopes,
+            start_fn_id,
+            fndecls,
+            fnbodies,
+        };
+
+        fn convert_scopes(scopes: BTreeMap<ScopeId, Scope>) -> BTreeMap<ScopeId, rhir::Scope> {
+            scopes
+                .into_iter()
+                .map(|(id, scope)| (id, convert_scope(scope)))
+                .collect()
+        }
+
+        fn convert_fndecls(fndecls: BTreeMap<FnId, FnDecl>) -> BTreeMap<FnId, rhir::FnDecl> {
+            fndecls
+                .into_iter()
+                .map(|(id, fndecl)| (id, convert_fndecl(fndecl)))
+                .collect()
+        }
+
+        fn convert_fnbodies(fnbodies: BTreeMap<FnId, FnBody>) -> BTreeMap<FnId, rhir::FnBody> {
+            fnbodies
+                .into_iter()
+                .map(|(id, fnbody)| (id, convert_fnbody(fnbody)))
+                .collect()
+        }
+
+        fn convert_scope(scope: Scope) -> rhir::Scope {
+            let Scope {
+                id,
+                parent_id,
+                fn_ids,
+                vars,
+            } = scope;
+            let vars = convert_vars(vars);
+
+            rhir::Scope {
+                id,
+                parent_id,
+                fn_ids,
+                vars,
+            }
+        }
+
+        fn convert_vars(vars: BTreeMap<VarId, Var>) -> BTreeMap<VarId, rhir::Var> {
+            vars.into_iter()
+                .map(|(id, var)| (id, convert_var(var)))
+                .collect()
+        }
+
+        fn convert_var(var: Var) -> rhir::Var {
+            let Var { id, name, ty } = var;
+            let ty = convert_ty(ty);
+
+            rhir::Var { id, name, ty }
+        }
+
+        fn convert_fndecl(fndecl: FnDecl) -> rhir::FnDecl {
+            let FnDecl {
+                id,
+                scope_id,
+                span,
+                name,
+                params,
+                ret_ty,
+            } = fndecl;
+
+            let params = params.into_iter().map(convert_param).collect_vec();
+            let ret_ty = convert_ty(ret_ty);
+
+            rhir::FnDecl {
+                id,
+                scope_id,
+                span,
+                name,
+                params,
+                ret_ty,
+            }
+        }
+
+        fn convert_param(param: Param) -> rhir::Param {
+            let Param { span, name, ty } = param;
+            let ty = convert_ty(ty);
+
+            rhir::Param { span, name, ty }
+        }
+
+        fn convert_ty(ty: Ty) -> rhir::Ty {
+            let Ty { span, res } = ty;
+            let res = RefCell::new(convert_res(res));
+
+            rhir::Ty { span, res }
+        }
+
+        fn convert_res<T: Clone>(res: RefCell<ResolveStatus<T>>) -> T {
+            match res.into_inner() {
+                ResolveStatus::Resolved(v) => v,
+                ResolveStatus::Unresolved(ident) => panic!("item not resolved: {:?}", ident),
+                ResolveStatus::Err(ident) => panic!("resolve error not reported: {:?}", ident),
+            }
+        }
+
+        fn convert_fnbody(fnbody: FnBody) -> rhir::FnBody {
+            let FnBody {
+                id,
+                inner_scope_id,
+                stmt,
+            } = fnbody;
+            let stmt = Box::new(convert_begin_stmt(*stmt));
+
+            rhir::FnBody {
+                id,
+                inner_scope_id,
+                stmt,
+            }
+        }
+
+        fn convert_stmt(stmt: Stmt) -> rhir::Stmt {
+            let Stmt { span, kind } = stmt;
+            let kind = match kind {
+                StmtKind::FnDef(id) => rhir::StmtKind::FnDef(id),
+                StmtKind::If(stmt) => rhir::StmtKind::If(convert_if_stmt(stmt)),
+                StmtKind::While(stmt) => rhir::StmtKind::While(convert_while_stmt(stmt)),
+                StmtKind::Begin(stmt) => rhir::StmtKind::Begin(convert_begin_stmt(stmt)),
+                StmtKind::Assg(stmt) => rhir::StmtKind::Assg(convert_assg_stmt(stmt)),
+                StmtKind::Dump(stmt) => rhir::StmtKind::Dump(convert_dump_stmt(stmt)),
+            };
+
+            rhir::Stmt { span, kind }
+        }
+
+        fn convert_if_stmt(stmt: IfStmt) -> rhir::IfStmt {
+            let IfStmt {
+                span,
+                cond,
+                then,
+                otherwise,
+            } = stmt;
+
+            let cond = Box::new(convert_bool_expr(*cond));
+            let then = Box::new(convert_stmt(*then));
+            let otherwise = Box::new(convert_stmt(*otherwise));
+
+            rhir::IfStmt {
+                span,
+                cond,
+                then,
+                otherwise,
+            }
+        }
+
+        fn convert_begin_stmt(stmt: BeginStmt) -> rhir::BeginStmt {
+            let BeginStmt { span, stmts } = stmt;
+            let stmts = stmts.into_iter().map(convert_stmt).collect_vec();
+
+            rhir::BeginStmt { span, stmts }
+        }
+
+        fn convert_while_stmt(stmt: WhileStmt) -> rhir::WhileStmt {
+            let WhileStmt { span, cond, body } = stmt;
+            let cond = Box::new(convert_bool_expr(*cond));
+            let body = Box::new(convert_stmt(*body));
+
+            rhir::WhileStmt { span, cond, body }
+        }
+
+        fn convert_assg_stmt(stmt: AssgStmt) -> rhir::AssgStmt {
+            let AssgStmt { span, var, expr } = stmt;
+            let var = Box::new(convert_var_ref(*var));
+            let expr = Box::new(convert_arith_expr(*expr));
+
+            rhir::AssgStmt { span, var, expr }
+        }
+
+        fn convert_dump_stmt(stmt: DumpStmt) -> rhir::DumpStmt {
+            let DumpStmt { span, var } = stmt;
+            let var = Box::new(convert_var_ref(*var));
+
+            rhir::DumpStmt { span, var }
+        }
+
+        fn convert_bool_expr(expr: BoolExpr) -> rhir::BoolExpr {
+            let BoolExpr { span, op, lhs, rhs } = expr;
+            let lhs = Box::new(convert_arith_expr(*lhs));
+            let rhs = Box::new(convert_arith_expr(*rhs));
+
+            rhir::BoolExpr { span, op, lhs, rhs }
+        }
+
+        fn convert_arith_expr(expr: ArithExpr) -> rhir::ArithExpr {
+            let ArithExpr { span, ty, kind } = expr;
+            let ty = convert_ty(ty);
+            let kind = match kind {
+                ArithExprKind::Primary(e) => {
+                    rhir::ArithExprKind::Primary(Box::new(convert_primary_expr(*e)))
+                }
+                ArithExprKind::UnaryOp(op, e) => {
+                    rhir::ArithExprKind::UnaryOp(op, Box::new(convert_arith_expr(*e)))
+                }
+                ArithExprKind::BinOp(op, lhs, rhs) => rhir::ArithExprKind::BinOp(
+                    op,
+                    Box::new(convert_arith_expr(*lhs)),
+                    Box::new(convert_arith_expr(*rhs)),
+                ),
+            };
+
+            rhir::ArithExpr { span, ty, kind }
+        }
+
+        fn convert_primary_expr(expr: PrimaryExpr) -> rhir::PrimaryExpr {
+            let PrimaryExpr { span, ty, kind } = expr;
+            let ty = convert_ty(ty);
+            let kind = match kind {
+                PrimaryExprKind::Var(var) => {
+                    rhir::PrimaryExprKind::Var(Box::new(convert_var_ref(*var)))
+                }
+                PrimaryExprKind::Const(cst) => {
+                    rhir::PrimaryExprKind::Const(Box::new(convert_const(*cst)))
+                }
+                PrimaryExprKind::FnCall(fncall) => {
+                    rhir::PrimaryExprKind::FnCall(Box::new(convert_fncall(*fncall)))
+                }
+                PrimaryExprKind::Paren(expr) => {
+                    rhir::PrimaryExprKind::Paren(Box::new(convert_arith_expr(*expr)))
+                }
+            };
+
+            rhir::PrimaryExpr { span, ty, kind }
+        }
+
+        fn convert_fncall(fncall: FnCall) -> rhir::FnCall {
+            let FnCall {
+                span,
+                span_name,
+                res,
+                args,
+            } = fncall;
+            let res = convert_res(res);
+            let args = args.into_iter().map(convert_arith_expr).collect_vec();
+
+            rhir::FnCall {
+                span,
+                span_name,
+                res,
+                args,
+            }
+        }
+
+        fn convert_var_ref(var: VarRef) -> rhir::VarRef {
+            let VarRef { span, res } = var;
+            let res = convert_res(res);
+
+            rhir::VarRef { span, res }
+        }
+
+        fn convert_const(cst: Const) -> rhir::Const {
+            let Const { span, ty, value } = cst;
+            let ty = convert_ty(ty);
+
+            rhir::Const { span, ty, value }
+        }
     }
 }

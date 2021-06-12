@@ -5,6 +5,10 @@ pub trait Visit {
         visit_all(self, prog);
     }
 
+    fn visit_scope(&mut self, scope: &Scope) {
+        visit_scope(self, scope);
+    }
+
     fn visit_fndecl(&mut self, fndecl: &FnDecl) {
         visit_fndecl(self, fndecl);
     }
@@ -23,6 +27,10 @@ pub trait Visit {
 
     fn visit_fnbody(&mut self, fnbody: &FnBody) {
         visit_fnbody(self, fnbody);
+    }
+
+    fn visit_var(&mut self, var: &Var) {
+        visit_var(self, var);
     }
 
     fn visit_stmt(&mut self, stmt: &Stmt) {
@@ -75,18 +83,16 @@ pub trait Visit {
 }
 
 pub fn visit_all<V: Visit + ?Sized>(v: &mut V, prog: &Program) {
-    for &scope in prog.scopes.keys() {
-        for &fn_id in &prog.scope(scope).fn_ids {
-            let fndecl = prog.fndecl(fn_id);
-            v.visit_fndecl(fndecl);
-        }
+    for scope in prog.scopes.values() {
+        v.visit_scope(scope);
     }
 
-    for &scope in prog.scopes.keys() {
-        for &fn_id in &prog.scope(scope).fn_ids {
-            let fnbody = prog.fnbody(fn_id);
-            v.visit_fnbody(fnbody);
-        }
+    for fndecl in prog.fndecls.values() {
+        v.visit_fndecl(fndecl);
+    }
+
+    for fnbody in prog.fnbodies.values() {
+        v.visit_fnbody(fnbody);
     }
 }
 
@@ -109,6 +115,17 @@ pub fn visit_ty<V: Visit + ?Sized>(_v: &mut V, _ty: &Ty) {}
 
 pub fn visit_fnbody<V: Visit + ?Sized>(v: &mut V, fnbody: &FnBody) {
     v.visit_begin_stmt(&*fnbody.stmt)
+}
+
+pub fn visit_scope<V: Visit + ?Sized>(v: &mut V, scope: &Scope) {
+    for var in scope.vars.values() {
+        v.visit_var(var);
+    }
+}
+
+pub fn visit_var<V: Visit + ?Sized>(v: &mut V, var: &Var) {
+    v.visit_ident(&var.name);
+    v.visit_ty(&var.ty);
 }
 
 pub fn visit_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &Stmt) {
