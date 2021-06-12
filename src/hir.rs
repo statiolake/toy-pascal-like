@@ -176,7 +176,7 @@ impl Scope {
     pub fn var(&self, id: VarId) -> &Var {
         self.vars
             .get(&id)
-            .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
+            .unwrap_or_else(|| panic!("internal error: variable of id {:?} not registered", id))
     }
 }
 
@@ -216,13 +216,9 @@ pub enum ResolveStatus<T: Clone> {
 
 #[derive(Debug, Clone)]
 pub enum TypeckStatus {
-    Infer,
     Revealed(TyKind),
-    Err {
-        span: Span,
-        expected: TyKind,
-        found: TyKind,
-    },
+    Infer,
+    Err,
 }
 
 #[derive(Debug, Clone)]

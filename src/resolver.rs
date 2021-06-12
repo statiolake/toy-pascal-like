@@ -47,7 +47,7 @@ impl ResolverErrorKind {
 
 pub type Result<T, E = ResolverError> = std::result::Result<T, E>;
 
-pub fn resolve_progam(prog: Program) -> Result<rhir::Program, Vec<ResolverError>> {
+pub fn resolve_hir(prog: Program) -> Result<rhir::Program, Vec<ResolverError>> {
     Resolver::from_program(prog).resolve()
 }
 

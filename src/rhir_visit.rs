@@ -1,4 +1,5 @@
-use crate::hir::*;
+use crate::hir;
+use crate::rhir::*;
 
 pub trait Visit {
     fn visit_all(&mut self, prog: &Program) {
@@ -17,7 +18,7 @@ pub trait Visit {
         visit_param(self, param);
     }
 
-    fn visit_ident(&mut self, ident: &Ident) {
+    fn visit_ident(&mut self, ident: &hir::Ident) {
         visit_ident(self, ident);
     }
 
@@ -109,7 +110,7 @@ pub fn visit_param<V: Visit + ?Sized>(v: &mut V, param: &Param) {
     v.visit_ty(&param.ty);
 }
 
-pub fn visit_ident<V: Visit + ?Sized>(_v: &mut V, _ident: &Ident) {}
+pub fn visit_ident<V: Visit + ?Sized>(_v: &mut V, _ident: &hir::Ident) {}
 
 pub fn visit_ty<V: Visit + ?Sized>(_v: &mut V, _ty: &Ty) {}
 

@@ -6,8 +6,10 @@ pub mod lexer;
 pub mod parser;
 pub mod resolver;
 pub mod rhir;
+pub mod rhir_visit;
 pub mod span;
-// pub mod typeck;
+pub mod thir;
+pub mod typeck;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error<'a> {

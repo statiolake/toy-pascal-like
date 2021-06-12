@@ -1,6 +1,5 @@
-use crate::hir::{BinOp, CompareOp, FnId, Ident, ScopeId, TypeckStatus, UnaryOp, Value, VarId};
+use crate::hir::{BinOp, CompareOp, FnId, Ident, ScopeId, TyKind, UnaryOp, Value, VarId};
 use crate::span::Span;
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 #[derive(Debug)]
@@ -9,6 +8,14 @@ pub struct Program {
     pub start_fn_id: FnId,
     pub fndecls: BTreeMap<FnId, FnDecl>,
     pub fnbodies: BTreeMap<FnId, FnBody>,
+}
+
+#[derive(Debug)]
+pub struct Scope {
+    pub id: ScopeId,
+    pub parent_id: Option<ScopeId>,
+    pub fn_ids: Vec<FnId>,
+    pub vars: BTreeMap<VarId, Var>,
 }
 
 impl Program {
@@ -50,22 +57,6 @@ impl Program {
 }
 
 #[derive(Debug)]
-pub struct Scope {
-    pub id: ScopeId,
-    pub parent_id: Option<ScopeId>,
-    pub fn_ids: Vec<FnId>,
-    pub vars: BTreeMap<VarId, Var>,
-}
-
-impl Scope {
-    pub fn var(&self, id: VarId) -> &Var {
-        self.vars
-            .get(&id)
-            .unwrap_or_else(|| panic!("internal error: variable of id {:?} not registered", id))
-    }
-}
-
-#[derive(Debug)]
 pub struct FnDecl {
     /// ID for this function
     pub id: FnId,
@@ -89,7 +80,7 @@ pub struct Param {
 #[derive(Debug, Clone)]
 pub struct Ty {
     pub span: Span,
-    pub res: RefCell<TypeckStatus>,
+    pub res: TyKind,
 }
 
 #[derive(Debug)]
