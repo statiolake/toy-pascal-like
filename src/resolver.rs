@@ -408,14 +408,19 @@ impl Resolver {
             let FnBody {
                 id,
                 inner_scope_id,
-                stmt,
+                kind,
             } = fnbody;
-            let stmt = Box::new(convert_begin_stmt(*stmt));
+            let kind = match kind {
+                FnBodyKind::Stmt(stmt) => {
+                    rhir::FnBodyKind::Stmt(Box::new(convert_begin_stmt(*stmt)))
+                }
+                FnBodyKind::Builtin(dynfn) => rhir::FnBodyKind::Builtin(dynfn),
+            };
 
             rhir::FnBody {
                 id,
                 inner_scope_id,
-                stmt,
+                kind,
             }
         }
 

@@ -36,7 +36,7 @@ pub fn lower_ast(stmt: &Ast<AstBeginStmt>) -> Program {
         FnBody {
             id: start_fn_id,
             inner_scope_id: start_scope_id,
-            stmt: Box::new(stmt),
+            kind: FnBodyKind::Stmt(Box::new(stmt)),
         },
     );
 
@@ -248,7 +248,21 @@ impl fmt::Display for TyKind {
 pub struct FnBody {
     pub id: FnId,
     pub inner_scope_id: ScopeId,
-    pub stmt: Box<BeginStmt>,
+    pub kind: FnBodyKind,
+}
+
+pub enum FnBodyKind {
+    Stmt(Box<BeginStmt>),
+    Builtin(Box<dyn Fn(Vec<Value>) -> Value>),
+}
+
+impl fmt::Debug for FnBodyKind {
+    fn fmt(&self, b: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FnBodyKind::Stmt(stmt) => write!(b, "FnBodyKind::Stmt({:?})", stmt),
+            FnBodyKind::Builtin(_) => write!(b, "FnBodyKind::Builtin(_)"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -389,6 +403,7 @@ pub struct Const {
 
 #[derive(Debug)]
 pub enum Value {
+    Void,
     Int(i64),
     Float(f64),
 }
@@ -557,7 +572,11 @@ impl LoweringContext {
         let body = FnBody {
             id: new_fn_id,
             inner_scope_id: new_scope_id,
-            stmt: Box::new(self.lower_begin_stmt(new_fn_id, new_scope_id, &stmt.ast.body)),
+            kind: FnBodyKind::Stmt(Box::new(self.lower_begin_stmt(
+                new_fn_id,
+                new_scope_id,
+                &stmt.ast.body,
+            ))),
         };
         self.register_fnbody(scope_id, new_fn_id, body);
 

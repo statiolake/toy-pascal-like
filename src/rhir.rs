@@ -2,6 +2,7 @@ use crate::hir::{BinOp, CompareOp, FnId, Ident, ScopeId, TypeckStatus, UnaryOp, 
 use crate::span::Span;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::fmt;
 
 #[derive(Debug)]
 pub struct Program {
@@ -96,7 +97,21 @@ pub struct Ty {
 pub struct FnBody {
     pub id: FnId,
     pub inner_scope_id: ScopeId,
-    pub stmt: Box<BeginStmt>,
+    pub kind: FnBodyKind,
+}
+
+pub enum FnBodyKind {
+    Stmt(Box<BeginStmt>),
+    Builtin(Box<dyn Fn(Vec<Value>) -> Value>),
+}
+
+impl fmt::Debug for FnBodyKind {
+    fn fmt(&self, b: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FnBodyKind::Stmt(stmt) => write!(b, "FnBodyKind::Stmt({:?})", stmt),
+            FnBodyKind::Builtin(_) => write!(b, "FnBodyKind::Builtin(_)"),
+        }
+    }
 }
 
 #[derive(Debug)]

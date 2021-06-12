@@ -363,14 +363,19 @@ impl TypeChecker {
             let FnBody {
                 id,
                 inner_scope_id,
-                stmt,
+                kind,
             } = fnbody;
-            let stmt = Box::new(convert_begin_stmt(*stmt));
+            let kind = match kind {
+                FnBodyKind::Stmt(stmt) => {
+                    thir::FnBodyKind::Stmt(Box::new(convert_begin_stmt(*stmt)))
+                }
+                FnBodyKind::Builtin(dynfn) => thir::FnBodyKind::Builtin(dynfn),
+            };
 
             thir::FnBody {
                 id,
                 inner_scope_id,
-                stmt,
+                kind,
             }
         }
 

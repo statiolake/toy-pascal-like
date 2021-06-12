@@ -115,7 +115,9 @@ pub fn visit_ident<V: Visit + ?Sized>(_v: &mut V, _ident: &hir::Ident) {}
 pub fn visit_ty<V: Visit + ?Sized>(_v: &mut V, _ty: &Ty) {}
 
 pub fn visit_fnbody<V: Visit + ?Sized>(v: &mut V, fnbody: &FnBody) {
-    v.visit_begin_stmt(&*fnbody.stmt)
+    if let FnBodyKind::Stmt(stmt) = &fnbody.kind {
+        v.visit_begin_stmt(stmt)
+    }
 }
 
 pub fn visit_scope<V: Visit + ?Sized>(v: &mut V, scope: &Scope) {
