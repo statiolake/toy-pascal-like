@@ -145,7 +145,7 @@ pub enum RhirStmtKind {
 #[derive(Debug)]
 pub struct RhirIfStmt {
     pub span: Span,
-    pub cond: Box<RhirBoolExpr>,
+    pub cond: Box<RhirArithExpr>,
     pub then: Box<RhirStmt>,
     pub otherwise: Box<RhirStmt>,
 }
@@ -153,7 +153,7 @@ pub struct RhirIfStmt {
 #[derive(Debug)]
 pub struct RhirWhileStmt {
     pub span: Span,
-    pub cond: Box<RhirBoolExpr>,
+    pub cond: Box<RhirArithExpr>,
     pub body: Box<RhirStmt>,
 }
 
@@ -174,14 +174,6 @@ pub struct RhirAssgStmt {
 pub struct RhirDumpStmt {
     pub span: Span,
     pub var: Box<RhirVarRef>,
-}
-
-#[derive(Debug)]
-pub struct RhirBoolExpr {
-    pub span: Span,
-    pub op: Box<CompareOp>,
-    pub lhs: Box<RhirArithExpr>,
-    pub rhs: Box<RhirArithExpr>,
 }
 
 #[derive(Debug)]

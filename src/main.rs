@@ -1,8 +1,6 @@
 use itertools::Itertools as _;
 use once_cell::sync::Lazy;
 use pascal_like::builtins;
-use pascal_like::interp;
-use pascal_like::interp::InterpError;
 use pascal_like::lexer::tokenize;
 use pascal_like::lowerer::lower_ast;
 use pascal_like::parser::{parse, ParserError};
@@ -147,19 +145,6 @@ fn print_typeck_error(filename: &str, source: &str, err: &TypeckError) {
     // }
 }
 
-fn print_interpreter_error(filename: &str, source: &str, err: &InterpError) {
-    eprint!(&*COLOR_ERROR => "runtime error:");
-    eprint!(" ");
-    eprintln!(&*COLOR_MESSAGE => "{}", err.kind);
-    show_span(filename, source, err.span, &err.kind.summary());
-
-    for hint in &err.kind.hints() {
-        eprint!(&*COLOR_INFO => "hint:");
-        eprint!(" ");
-        eprintln!("{}", hint);
-    }
-}
-
 fn main() {
     let filename = match env::args().nth(1) {
         Some(f) => f,
@@ -219,22 +204,6 @@ fn main() {
     println!("{:#?}", thir);
     println!();
 
-    let use_ast_runner = false;
-    if use_ast_runner {
-        println!("--- run (AST) ---");
-        let state = match interp::run(&ast) {
-            Ok(state) => state,
-            Err(err) => {
-                print_interpreter_error(&filename, &source, &err);
-                return;
-            }
-        };
-        println!();
-
-        println!("--- final state ---");
-        state.display();
-    } else {
-        println!("--- run (THIR) ---");
-        thir_interp::run(&thir);
-    }
+    println!("--- run (THIR) ---");
+    thir_interp::run(&thir);
 }

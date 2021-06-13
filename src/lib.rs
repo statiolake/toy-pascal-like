@@ -22,31 +22,7 @@ pub mod thir;
 
 pub mod builtins;
 
-pub mod interp;
 pub mod thir_interp;
-
-#[derive(thiserror::Error, Debug)]
-pub enum Error<'a> {
-    #[error("parse error: {0}")]
-    ParserError(parser::ParserError<'a>),
-
-    #[error("runtime error: {0}")]
-    InterpError(interp::InterpError),
-}
-
-impl<'a> From<parser::ParserError<'a>> for Error<'a> {
-    fn from(err: parser::ParserError<'a>) -> Self {
-        Self::ParserError(err)
-    }
-}
-
-impl<'a> From<interp::InterpError> for Error<'a> {
-    fn from(err: interp::InterpError) -> Self {
-        Self::InterpError(err)
-    }
-}
-
-pub type Result<'a, T, E = Error<'a>> = std::result::Result<T, E>;
 
 #[cfg(test)]
 mod tests {

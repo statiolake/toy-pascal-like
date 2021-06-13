@@ -230,7 +230,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
 
     fn parse_if_stmt(&mut self) -> Result<'i, Ast<AstIfStmt>> {
         let start = self.eat(TokenKind::If)?.span.start;
-        let cond = self.parse_bool_expr()?;
+        let cond = self.parse_arith_expr()?;
         self.eat(TokenKind::Then)?;
         let then = self.parse_stmt()?;
         self.eat(TokenKind::Else)?;
@@ -247,7 +247,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
 
     fn parse_while_stmt(&mut self) -> Result<'i, Ast<AstWhileStmt>> {
         let start = self.eat(TokenKind::While)?.span.start;
-        let cond = self.parse_bool_expr()?;
+        let cond = self.parse_arith_expr()?;
         self.eat(TokenKind::Do)?;
         let body = self.parse_stmt()?;
         let end = body.span.end;
@@ -345,19 +345,28 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         Ok(AstDumpStmt::from_var(Span::new(start, end), var))
     }
 
-    fn parse_bool_expr(&mut self) -> Result<'i, Ast<AstBoolExpr>> {
-        let lhs = self.parse_arith_expr()?;
-        let op = self.parse_compare_op()?;
-        let rhs = self.parse_arith_expr()?;
-        let start = lhs.span.start;
-        let end = rhs.span.end;
+    fn parse_arith_expr(&mut self) -> Result<'i, Ast<AstArithExpr>> {
+        let add = self.parse_add_expr()?;
+        self.parse_arith_expr_impl(AstArithExpr::from_add(add))
+    }
 
-        Ok(AstBoolExpr::from_elements(
-            Span::new(start, end),
-            lhs,
-            op,
-            rhs,
-        ))
+    fn parse_arith_expr_impl(&mut self, lhs: Ast<AstArithExpr>) -> Result<'i, Ast<AstArithExpr>> {
+        match self.lookahead(0).map(|t| t.kind).ok() {
+            Some(TokenKind::Lt) | Some(TokenKind::Gt) | Some(TokenKind::Le)
+            | Some(TokenKind::Ge) | Some(TokenKind::Eq) | Some(TokenKind::Ne) => {
+                let start = lhs.span.start;
+                let op = self.parse_compare_op()?;
+                let rhs = self.parse_add_expr()?;
+                let end = rhs.span.end;
+                self.parse_arith_expr_impl(AstArithExpr::compare_from_elements(
+                    Span::new(start, end),
+                    op,
+                    lhs,
+                    rhs,
+                ))
+            }
+            _ => Ok(lhs),
+        }
     }
 
     fn parse_compare_op(&mut self) -> Result<'i, Ast<AstCompareOp>> {
@@ -404,19 +413,19 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         }
     }
 
-    fn parse_arith_expr(&mut self) -> Result<'i, Ast<AstArithExpr>> {
+    fn parse_add_expr(&mut self) -> Result<'i, Ast<AstAddExpr>> {
         let mul = self.parse_mul_expr()?;
-        self.parse_arith_expr_impl(AstArithExpr::from_mul(mul))
+        self.parse_add_expr_impl(AstAddExpr::from_mul(mul))
     }
 
-    fn parse_arith_expr_impl(&mut self, lhs: Ast<AstArithExpr>) -> Result<'i, Ast<AstArithExpr>> {
+    fn parse_add_expr_impl(&mut self, lhs: Ast<AstAddExpr>) -> Result<'i, Ast<AstAddExpr>> {
         match self.lookahead(0).map(|t| t.kind).ok() {
             Some(TokenKind::Add) => {
                 let start = lhs.span.start;
                 self.eat(TokenKind::Add)?;
                 let rhs = self.parse_mul_expr()?;
                 let end = rhs.span.end;
-                self.parse_arith_expr_impl(AstArithExpr::add_from_elements(
+                self.parse_add_expr_impl(AstAddExpr::add_from_elements(
                     Span::new(start, end),
                     lhs,
                     rhs,
@@ -427,7 +436,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                 self.eat(TokenKind::Sub)?;
                 let rhs = self.parse_mul_expr()?;
                 let end = rhs.span.end;
-                self.parse_arith_expr_impl(AstArithExpr::sub_from_elements(
+                self.parse_add_expr_impl(AstAddExpr::sub_from_elements(
                     Span::new(start, end),
                     lhs,
                     rhs,

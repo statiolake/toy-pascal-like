@@ -341,7 +341,7 @@ impl Resolver {
             }
 
             fn visit_if_stmt(&mut self, stmt: &HirIfStmt) {
-                self.visit_bool_expr(&stmt.cond);
+                self.visit_arith_expr(&stmt.cond);
 
                 // if stmt may create "possibly uninitialized variables".
                 let init_vars = self.init_vars.clone();
@@ -361,7 +361,7 @@ impl Resolver {
                 // any variables declared inside the while loop is "possibly uninitialized", because
                 // the loop body is not necessarily run.
                 let init_vars = self.init_vars.clone();
-                self.visit_bool_expr(&stmt.cond);
+                self.visit_arith_expr(&stmt.cond);
                 self.visit_stmt(&stmt.body);
                 self.init_vars = init_vars;
             }
@@ -571,7 +571,7 @@ impl Resolver {
                 otherwise,
             } = stmt;
 
-            let cond = Box::new(convert_bool_expr(*cond));
+            let cond = Box::new(convert_arith_expr(*cond));
             let then = Box::new(convert_stmt(*then));
             let otherwise = Box::new(convert_stmt(*otherwise));
 
@@ -592,7 +592,7 @@ impl Resolver {
 
         fn convert_while_stmt(stmt: HirWhileStmt) -> rhir::RhirWhileStmt {
             let HirWhileStmt { span, cond, body } = stmt;
-            let cond = Box::new(convert_bool_expr(*cond));
+            let cond = Box::new(convert_arith_expr(*cond));
             let body = Box::new(convert_stmt(*body));
 
             rhir::RhirWhileStmt { span, cond, body }
@@ -611,14 +611,6 @@ impl Resolver {
             let var = Box::new(convert_var_ref(*var));
 
             rhir::RhirDumpStmt { span, var }
-        }
-
-        fn convert_bool_expr(expr: HirBoolExpr) -> rhir::RhirBoolExpr {
-            let HirBoolExpr { span, op, lhs, rhs } = expr;
-            let lhs = Box::new(convert_arith_expr(*lhs));
-            let rhs = Box::new(convert_arith_expr(*rhs));
-
-            rhir::RhirBoolExpr { span, op, lhs, rhs }
         }
 
         fn convert_arith_expr(expr: HirArithExpr) -> rhir::RhirArithExpr {

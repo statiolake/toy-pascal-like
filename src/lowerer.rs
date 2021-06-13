@@ -283,7 +283,7 @@ impl LoweringContext {
     ) -> HirIfStmt {
         HirIfStmt {
             span: stmt.span,
-            cond: Box::new(self.lower_bool_expr(fn_id, scope_id, &stmt.ast.cond)),
+            cond: Box::new(self.lower_arith_expr(fn_id, scope_id, &stmt.ast.cond)),
             then: Box::new(self.lower_stmt(fn_id, scope_id, &stmt.ast.then)),
             otherwise: Box::new(self.lower_stmt(fn_id, scope_id, &stmt.ast.otherwise)),
         }
@@ -297,7 +297,7 @@ impl LoweringContext {
     ) -> HirWhileStmt {
         HirWhileStmt {
             span: stmt.span,
-            cond: Box::new(self.lower_bool_expr(fn_id, scope_id, &stmt.ast.cond)),
+            cond: Box::new(self.lower_arith_expr(fn_id, scope_id, &stmt.ast.cond)),
             body: Box::new(self.lower_stmt(fn_id, scope_id, &stmt.ast.body)),
         }
     }
@@ -346,41 +346,6 @@ impl LoweringContext {
         }
     }
 
-    fn lower_bool_expr(
-        &mut self,
-        fn_id: FnId,
-        scope_id: ScopeId,
-        expr: &Ast<AstBoolExpr>,
-    ) -> HirBoolExpr {
-        HirBoolExpr {
-            span: expr.span,
-            op: Box::new(self.lower_compare_op(fn_id, scope_id, &expr.ast.op)),
-            lhs: Box::new(self.lower_arith_expr(fn_id, scope_id, &expr.ast.lhs)),
-            rhs: Box::new(self.lower_arith_expr(fn_id, scope_id, &expr.ast.rhs)),
-        }
-    }
-
-    fn lower_compare_op(
-        &mut self,
-        _fn_id: FnId,
-        _scope_id: ScopeId,
-        op: &Ast<AstCompareOp>,
-    ) -> CompareOp {
-        let kind = match op.ast {
-            AstCompareOp::Lt => CompareOpKind::Lt,
-            AstCompareOp::Gt => CompareOpKind::Gt,
-            AstCompareOp::Le => CompareOpKind::Le,
-            AstCompareOp::Ge => CompareOpKind::Ge,
-            AstCompareOp::Eq => CompareOpKind::Eq,
-            AstCompareOp::Ne => CompareOpKind::Ne,
-        };
-
-        CompareOp {
-            span: op.span,
-            kind,
-        }
-    }
-
     fn lower_arith_expr(
         &mut self,
         fn_id: FnId,
@@ -388,16 +353,51 @@ impl LoweringContext {
         expr: &Ast<AstArithExpr>,
     ) -> HirArithExpr {
         match &expr.ast {
-            AstArithExpr::MulExpr(e) => self.lower_mul_expr(fn_id, scope_id, e),
-            AstArithExpr::Add(l, r) | AstArithExpr::Sub(l, r) => {
-                let op = match &expr.ast {
-                    AstArithExpr::MulExpr(_) => unreachable!(),
-                    AstArithExpr::Add(_, _) => BinOp::Add,
-                    AstArithExpr::Sub(_, _) => BinOp::Sub,
+            AstArithExpr::AddExpr(expr) => self.lower_add_expr(fn_id, scope_id, &*expr),
+            AstArithExpr::CompareExpr(op, l, r) => {
+                let op = match &op.ast {
+                    AstCompareOp::Lt => BinOp::Lt,
+                    AstCompareOp::Gt => BinOp::Gt,
+                    AstCompareOp::Le => BinOp::Le,
+                    AstCompareOp::Ge => BinOp::Ge,
+                    AstCompareOp::Eq => BinOp::Eq,
+                    AstCompareOp::Ne => BinOp::Ne,
                 };
                 let kind = HirArithExprKind::BinOp(
                     op,
                     Box::new(self.lower_arith_expr(fn_id, scope_id, l)),
+                    Box::new(self.lower_add_expr(fn_id, scope_id, r)),
+                );
+
+                HirArithExpr {
+                    span: expr.span,
+                    ty: HirTy {
+                        span: expr.span,
+                        res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
+                    },
+                    kind,
+                }
+            }
+        }
+    }
+
+    fn lower_add_expr(
+        &mut self,
+        fn_id: FnId,
+        scope_id: ScopeId,
+        expr: &Ast<AstAddExpr>,
+    ) -> HirArithExpr {
+        match &expr.ast {
+            AstAddExpr::MulExpr(e) => self.lower_mul_expr(fn_id, scope_id, e),
+            AstAddExpr::Add(l, r) | AstAddExpr::Sub(l, r) => {
+                let op = match &expr.ast {
+                    AstAddExpr::MulExpr(_) => unreachable!(),
+                    AstAddExpr::Add(_, _) => BinOp::Add,
+                    AstAddExpr::Sub(_, _) => BinOp::Sub,
+                };
+                let kind = HirArithExprKind::BinOp(
+                    op,
+                    Box::new(self.lower_add_expr(fn_id, scope_id, l)),
                     Box::new(self.lower_mul_expr(fn_id, scope_id, r)),
                 );
 
