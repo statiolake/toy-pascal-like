@@ -1,6 +1,4 @@
 use crate::span::Span;
-use itertools::Itertools as _;
-use std::fmt;
 
 #[derive(Debug)]
 pub struct Ast<A> {
@@ -76,17 +74,6 @@ impl AstParamList {
             next: Box::new(next),
         };
         Ast { span, ast }
-    }
-}
-
-impl fmt::Display for AstParamList {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        if let AstParamList::Nonempty { ident, ty, next } = self {
-            writeln!(b, "{}: {}", ident, ty)?;
-            writeln!(b, "{}", next)?;
-        }
-
-        Ok(())
     }
 }
 
@@ -273,6 +260,19 @@ pub enum AstCompareOp {
     Ne,
 }
 
+impl AstCompareOp {
+    pub fn symbol(&self) -> &'static str {
+        match self {
+            AstCompareOp::Lt => "<",
+            AstCompareOp::Gt => ">",
+            AstCompareOp::Le => "<=",
+            AstCompareOp::Ge => ">=",
+            AstCompareOp::Eq => "==",
+            AstCompareOp::Ne => "!=",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum AstArithExpr {
     MulExpr(Box<Ast<AstMulExpr>>),
@@ -442,34 +442,34 @@ pub enum AstConst {
 }
 
 #[derive(Debug)]
-pub struct AstVar(pub AstIdent);
+pub struct AstVar(pub Ast<AstIdent>);
 
 impl AstVar {
     pub fn from_ident(ident: Ast<AstIdent>) -> Ast<AstVar> {
         Ast {
-            ast: AstVar(ident.ast),
             span: ident.span,
+            ast: AstVar(ident),
         }
     }
 
-    pub fn ident(&self) -> &str {
-        self.0.ident()
+    pub fn ident(&self) -> &Ast<AstIdent> {
+        &self.0
     }
 }
 
 #[derive(Debug)]
-pub struct AstTy(pub AstIdent);
+pub struct AstTy(pub Ast<AstIdent>);
 
 impl AstTy {
     pub fn from_ident(ident: Ast<AstIdent>) -> Ast<AstTy> {
         Ast {
-            ast: AstTy(ident.ast),
             span: ident.span,
+            ast: AstTy(ident),
         }
     }
 
-    pub fn ident(&self) -> &str {
-        self.0.ident()
+    pub fn ident(&self) -> &Ast<AstIdent> {
+        &self.0
     }
 }
 
@@ -479,273 +479,5 @@ pub struct AstIdent(pub String);
 impl AstIdent {
     pub fn ident(&self) -> &str {
         &self.0
-    }
-}
-
-fn indent<T: fmt::Display>(s: &T, indent: usize) -> String {
-    let indent = " ".repeat(indent);
-    s.to_string()
-        .trim()
-        .lines()
-        .map(|l| format!("{}{}", indent, l))
-        .join("\n")
-}
-
-impl<A: fmt::Display> fmt::Display for Ast<A> {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        write!(b, "{} @ {}", self.span, self.ast)
-    }
-}
-
-impl fmt::Display for AstStmt {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        let child = match self {
-            AstStmt::FuncdefStmt(stmt) => stmt.to_string(),
-            AstStmt::IfStmt(stmt) => stmt.to_string(),
-            AstStmt::WhileStmt(stmt) => stmt.to_string(),
-            AstStmt::BeginStmt(stmt) => stmt.to_string(),
-            AstStmt::AssgStmt(stmt) => stmt.to_string(),
-            AstStmt::DumpStmt(stmt) => stmt.to_string(),
-        };
-
-        writeln!(b, "Stmt")?;
-        writeln!(b, "{}", indent(&child, 4))?;
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstFuncdefStmt {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(b, "FuncdefStmt")?;
-        writeln!(b, "  name: {}", self.name)?;
-        writeln!(b, "  args:")?;
-        writeln!(b, "{}", indent(&self.params, 4))?;
-        writeln!(b, "  body:")?;
-        writeln!(b, "{}", indent(&self.body, 4))?;
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstIfStmt {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(b, "IfStmt")?;
-        writeln!(b, "  cond:")?;
-        writeln!(b, "{}", indent(&self.cond, 4))?;
-        writeln!(b, "  then:")?;
-        writeln!(b, "{}", indent(&self.then, 4))?;
-        writeln!(b, "  else:")?;
-        writeln!(b, "{}", indent(&self.otherwise, 4))?;
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstWhileStmt {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(b, "While")?;
-        writeln!(b, "  cond:")?;
-        writeln!(b, "{}", indent(&self.cond, 4))?;
-        writeln!(b, "  body:")?;
-        writeln!(b, "{}", indent(&self.body, 4))?;
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstBeginStmt {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(b, "Begin")?;
-        writeln!(b, "{}", indent(&self.list, 4))?;
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstStmtList {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        if let AstStmtList::Nonempty { stmt, next } = self {
-            writeln!(b, "{}", stmt)?;
-            writeln!(b, "{}", next)?;
-        }
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstAssgStmt {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(b, "Assg")?;
-        writeln!(b, "  var: {}", self.var)?;
-        writeln!(b, "  expr:")?;
-        writeln!(b, "{}", indent(&self.expr, 4))?;
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstDumpStmt {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(b, "Dump")?;
-        writeln!(b, "  {}", self.var)?;
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstBoolExpr {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(b, "BoolExpr")?;
-        writeln!(b, "  lhs:")?;
-        writeln!(b, "{}", indent(&self.lhs, 4))?;
-        writeln!(b, "  op: {}", self.op)?;
-        writeln!(b, "  rhs:")?;
-        writeln!(b, "{}", indent(&self.rhs, 4))?;
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstCompareOp {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        let op = match self {
-            AstCompareOp::Lt => "<",
-            AstCompareOp::Gt => ">",
-            AstCompareOp::Le => "<=",
-            AstCompareOp::Ge => ">=",
-            AstCompareOp::Eq => "==",
-            AstCompareOp::Ne => "!=",
-        };
-        write!(b, "CompareOp({})", op)
-    }
-}
-
-impl fmt::Display for AstArithExpr {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(b, "ArithExpr")?;
-        match self {
-            AstArithExpr::MulExpr(expr) => writeln!(b, "{}", indent(&expr, 4))?,
-            AstArithExpr::Add(lhs, rhs) => {
-                writeln!(b, "  lhs:")?;
-                writeln!(b, "{}", indent(&lhs, 4))?;
-                writeln!(b, "  rhs:")?;
-                writeln!(b, "{}", indent(&rhs, 4))?;
-            }
-            AstArithExpr::Sub(lhs, rhs) => {
-                writeln!(b, "  lhs:")?;
-                writeln!(b, "{}", indent(&lhs, 4))?;
-                writeln!(b, "  rhs:")?;
-                writeln!(b, "{}", indent(&rhs, 4))?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstMulExpr {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(b, "MulExpr")?;
-        match self {
-            AstMulExpr::UnaryExpr(expr) => writeln!(b, "{}", indent(&expr, 4))?,
-            AstMulExpr::Mul(lhs, rhs) => {
-                writeln!(b, "  lhs:")?;
-                writeln!(b, "{}", indent(&lhs, 4))?;
-                writeln!(b, "  rhs:")?;
-                writeln!(b, "{}", indent(&rhs, 4))?;
-            }
-            AstMulExpr::Div(lhs, rhs) => {
-                writeln!(b, "  lhs:")?;
-                writeln!(b, "{}", indent(&lhs, 4))?;
-                writeln!(b, "  rhs:")?;
-                writeln!(b, "{}", indent(&rhs, 4))?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstUnaryExpr {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(b, "UnaryExpr")?;
-        match self {
-            AstUnaryExpr::PrimaryExpr(expr) => writeln!(b, "{}", indent(&expr, 4)),
-            AstUnaryExpr::Neg(expr) => writeln!(b, "{}", indent(&expr, 4)),
-        }
-    }
-}
-
-impl fmt::Display for AstPrimaryExpr {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(b, "PrimaryExpr")?;
-        match self {
-            AstPrimaryExpr::Var(var) => writeln!(b, "    {}", var)?,
-            AstPrimaryExpr::Const(value) => writeln!(b, "    {}", value)?,
-            AstPrimaryExpr::FnCall(fncall) => writeln!(b, "{}", indent(&fncall, 4))?,
-            AstPrimaryExpr::Paren(expr) => writeln!(b, "{}", indent(&expr, 4))?,
-        }
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstFnCall {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(b, "  ident: {}", self.ident)?;
-        writeln!(b, "  args:")?;
-        writeln!(b, "{}", indent(&self.args, 4))?;
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstArgumentList {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        if let AstArgumentList::Nonempty { expr, next } = self {
-            writeln!(b, "{}", expr)?;
-            writeln!(b, "{}", next)?;
-        }
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for AstArithOp {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        let op = match self {
-            AstArithOp::Add => "+",
-            AstArithOp::Sub => "-",
-            AstArithOp::Mul => "*",
-            AstArithOp::Div => "/",
-        };
-        write!(b, "ArithOp({})", op)
-    }
-}
-
-impl fmt::Display for AstConst {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            AstConst::Int(int) => write!(b, "Const({})", int),
-            AstConst::Float(float) => write!(b, "Float({})", float),
-        }
-    }
-}
-
-impl fmt::Display for AstVar {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        write!(b, "Var({})", self.0)
-    }
-}
-
-impl fmt::Display for AstTy {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        write!(b, "Ty({})", self.0)
-    }
-}
-
-impl fmt::Display for AstIdent {
-    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
-        write!(b, "Ident({})", self.ident())
     }
 }

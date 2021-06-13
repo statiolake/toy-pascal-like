@@ -12,7 +12,7 @@ impl LineColumn {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Span {
     pub start: LineColumn,
     pub end: LineColumn,
@@ -37,7 +37,7 @@ impl Span {
     }
 }
 
-impl fmt::Display for Span {
+impl fmt::Debug for Span {
     fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
         write!(
             b,

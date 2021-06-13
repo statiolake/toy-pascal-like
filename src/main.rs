@@ -1,10 +1,15 @@
 use itertools::Itertools as _;
 use once_cell::sync::Lazy;
-use pascal_like::interp::run;
+use pascal_like::builtins;
+use pascal_like::interp;
 use pascal_like::interp::InterpError;
 use pascal_like::lexer::tokenize;
+use pascal_like::lowerer::lower_ast;
 use pascal_like::parser::{parse, ParserError};
+use pascal_like::resolver::{resolve_hir, ResolverError};
 use pascal_like::span::Span;
+use pascal_like::thir_interp;
+use pascal_like::typeck::{check_rhir, TypeckError};
 use std::cmp::min;
 use std::io::prelude::*;
 use std::sync::Mutex;
@@ -116,6 +121,32 @@ fn print_parser_error(filename: &str, source: &str, err: &ParserError) {
     }
 }
 
+fn print_resolver_error(filename: &str, source: &str, err: &ResolverError) {
+    eprint!(&*COLOR_ERROR => "resolver error:");
+    eprint!(" ");
+    eprintln!(&*COLOR_MESSAGE => "{}", err.kind);
+    show_span(filename, source, err.span, &err.kind.summary());
+
+    // for hint in &err.kind.hints() {
+    //     eprint!(&*COLOR_INFO => "hint:");
+    //     eprint!(" ");
+    //     eprintln!("{}", hint);
+    // }
+}
+
+fn print_typeck_error(filename: &str, source: &str, err: &TypeckError) {
+    eprint!(&*COLOR_ERROR => "type checker error:");
+    eprint!(" ");
+    eprintln!(&*COLOR_MESSAGE => "{}", err.kind);
+    show_span(filename, source, err.span, &err.kind.summary());
+
+    // for hint in &err.kind.hints() {
+    //     eprint!(&*COLOR_INFO => "hint:");
+    //     eprint!(" ");
+    //     eprintln!("{}", hint);
+    // }
+}
+
 fn print_interpreter_error(filename: &str, source: &str, err: &InterpError) {
     eprint!(&*COLOR_ERROR => "runtime error:");
     eprint!(" ");
@@ -153,19 +184,57 @@ fn main() {
     };
 
     println!("--- ast ---");
-    println!("{}", ast);
+    println!("{:#?}", ast);
     println!();
 
-    println!("--- run ---");
-    let state = match run(&ast) {
-        Ok(state) => state,
-        Err(err) => {
-            print_interpreter_error(&filename, &source, &err);
+    let builtins = builtins::populate_builtins();
+    let hir = lower_ast(&ast, builtins);
+    println!("--- hir ---");
+    println!("{:#?}", hir);
+    println!();
+
+    let rhir = match resolve_hir(hir) {
+        Ok(resolved) => resolved,
+        Err(errors) => {
+            for err in errors {
+                print_resolver_error(&filename, &source, &err);
+            }
             return;
         }
     };
+    println!("--- resolved hir ---");
+    println!("{:#?}", rhir);
     println!();
 
-    println!("--- final state ---");
-    state.display();
+    let thir = match check_rhir(rhir) {
+        Ok(checked) => checked,
+        Err(errors) => {
+            for err in errors {
+                print_typeck_error(&filename, &source, &err);
+            }
+            return;
+        }
+    };
+    println!("--- typed hir ---");
+    println!("{:#?}", thir);
+    println!();
+
+    let use_ast_runner = false;
+    if use_ast_runner {
+        println!("--- run (AST) ---");
+        let state = match interp::run(&ast) {
+            Ok(state) => state,
+            Err(err) => {
+                print_interpreter_error(&filename, &source, &err);
+                return;
+            }
+        };
+        println!();
+
+        println!("--- final state ---");
+        state.display();
+    } else {
+        println!("--- run (THIR) ---");
+        thir_interp::run(&thir);
+    }
 }

@@ -11,7 +11,7 @@ use std::{fmt, io};
 pub type Result<T, E = InterpError> = std::result::Result<T, E>;
 
 #[derive(thiserror::Error, Debug)]
-#[error("{span}: {kind}")]
+#[error("{span:?}: {kind}")]
 pub struct InterpError {
     pub span: Span,
     pub kind: InterpErrorKind,
@@ -92,9 +92,9 @@ impl InterpErrorKind {
     }
 }
 
-pub fn run(stmt: &Ast<AstStmt>) -> Result<State> {
+pub fn run(stmt: &Ast<AstBeginStmt>) -> Result<State> {
     let mut state = State::defaultenv();
-    state.run_stmt(stmt)?;
+    state.run_begin_stmt(stmt)?;
     Ok(state)
 }
 
@@ -508,13 +508,13 @@ impl<'a> State<'a> {
     fn run_assg_stmt(&mut self, stmt: &'a Ast<AstAssgStmt>) -> Result<()> {
         let name = stmt.ast.var.ast.ident();
         let value = self.eval_arith_expr(&stmt.ast.expr)?;
-        self.assign_to_var(stmt.span, name, value)?;
+        self.assign_to_var(stmt.span, name.ast.ident(), value)?;
 
         Ok(())
     }
 
     fn run_dump_stmt(&mut self, stmt: &'a Ast<AstDumpStmt>) -> Result<()> {
-        let name = stmt.ast.var.ast.ident();
+        let name = stmt.ast.var.ast.ident().ast.ident();
         let value = self.get_var(stmt.span, name)?;
         println!("dump: {} = {}", name, value);
 
@@ -546,7 +546,7 @@ impl<'a> State<'a> {
             Err(InterpError {
                 span: expr.ast.lhs.span,
                 kind: InterpErrorKind::UnsupportedBinaryOperation {
-                    op: expr.ast.op.ast.to_string(),
+                    op: expr.ast.op.ast.symbol().to_owned(),
                     ty: lhs.ty(),
                 },
             })
@@ -625,7 +625,7 @@ impl<'a> State<'a> {
 
     fn eval_primary_expr(&mut self, expr: &'a Ast<AstPrimaryExpr>) -> Result<Value> {
         match &expr.ast {
-            AstPrimaryExpr::Var(var) => self.get_var(expr.span, var.ast.ident()),
+            AstPrimaryExpr::Var(var) => self.get_var(expr.span, var.ast.ident().ast.ident()),
             AstPrimaryExpr::Const(value) => self.eval_const(value),
             AstPrimaryExpr::FnCall(fncall) => self.eval_fncall(fncall),
             AstPrimaryExpr::Paren(expr) => self.eval_arith_expr(expr),
@@ -669,7 +669,7 @@ impl<'a> State<'a> {
     }
 
     fn resolve_ty(&mut self, ty: &'a Ast<AstTy>) -> Result<ValueTy> {
-        match ty.ast.ident() {
+        match ty.ast.ident().ast.ident() {
             "int" => Ok(ValueTy::Int),
             "float" => Ok(ValueTy::Float),
             other => Err(InterpError {

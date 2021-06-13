@@ -1,8 +1,29 @@
-pub mod ast;
-pub mod interp;
-pub mod lexer;
-pub mod parser;
 pub mod span;
+
+pub mod lexer;
+
+pub mod parser;
+
+pub mod ast;
+
+pub mod lowerer;
+
+pub mod hir;
+pub mod hir_visit;
+
+pub mod resolver;
+
+pub mod rhir;
+pub mod rhir_visit;
+
+pub mod typeck;
+
+pub mod thir;
+
+pub mod builtins;
+
+pub mod interp;
+pub mod thir_interp;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error<'a> {
@@ -29,9 +50,26 @@ pub type Result<'a, T, E = Error<'a>> = std::result::Result<T, E>;
 
 #[cfg(test)]
 mod tests {
-    use crate::interp::run;
+    use std::collections::BTreeMap;
+
+    use crate::builtins::populate_builtins;
+    use crate::hir::Value;
     use crate::lexer::tokenize;
+    use crate::lowerer::lower_ast;
     use crate::parser::parse;
+    use crate::resolver::resolve_hir;
+    use crate::thir_interp::run;
+    use crate::typeck::check_rhir;
+
+    fn run_source(source: &str) -> BTreeMap<String, Value> {
+        let tokens = tokenize(source);
+        let ast = parse(&tokens).expect("it should parse");
+        let hir = lower_ast(&ast, populate_builtins());
+        let rhir = resolve_hir(hir).expect("it should resolved");
+        let thir = check_rhir(rhir).expect("it should pass typeck");
+
+        run(&thir)
+    }
 
     #[test]
     fn fib() {
@@ -49,27 +87,10 @@ begin
     end
 end
 "#;
-        let tokens = tokenize(source);
-        let ast = parse(&tokens).expect("it should parse");
-        let state = run(&ast).expect("it should run");
-        assert_eq!(state.variables()["a_0"].unwrap_int(), 6765);
-        assert_eq!(state.variables()["i"].unwrap_int(), 20);
-    }
 
-    #[test]
-    fn func_random_int() {
-        let source = r#"
-begin
-    min := 10;
-    max := 20;
-    dice := RandomInt(min, max);
-    dump dice
-end
-"#;
-        let tokens = tokenize(source);
-        let ast = parse(&tokens).expect("it should parse");
-        let state = run(&ast).expect("it should run");
-        assert!((10..=20).contains(&state.variables()["dice"].unwrap_int()));
+        let vars = run_source(source);
+        assert_eq!(vars["a_0"].unwrap_int(), 6765);
+        assert_eq!(vars["i"].unwrap_int(), 20);
     }
 
     #[test]
@@ -90,19 +111,17 @@ begin
     dump x
 end
 "#;
-        let tokens = tokenize(source);
-        let ast = parse(&tokens).expect("it should parse");
-        let state = run(&ast).expect("it should run");
-        assert_eq!(state.variables()["x"].unwrap_int(), 55);
+
+        let vars = run_source(source);
+        assert_eq!(vars["x"].unwrap_int(), 55);
     }
 
     #[test]
     fn natural_arith() {
-        let source = r#"x := (1 + 2) * 3 - (4 + 5) + (-6 * (7 + 8)) / -9 + -10"#;
-        let tokens = tokenize(source);
-        let ast = parse(&tokens).expect("it should parse");
-        let state = run(&ast).expect("it should run");
-        assert_eq!(state.variables()["x"].unwrap_int(), 0);
+        let source = r#"begin x := (1 + 2) * 3 - (4 + 5) + (-6 * (7 + 8)) / -9 + -10 end"#;
+
+        let vars = run_source(source);
+        assert_eq!(vars["x"].unwrap_int(), 0);
     }
 
     #[test]
@@ -119,9 +138,8 @@ begin
     end
 end
 "#;
-        let tokens = tokenize(source);
-        let ast = parse(&tokens).expect("it should parse");
-        let state = run(&ast).expect("it should run");
-        assert!((state.variables()["sum"].unwrap_float() - 2.0).abs() < 1e-8);
+
+        let vars = run_source(source);
+        assert!((vars["sum"].unwrap_float() - 2.0).abs() < 1e-8);
     }
 }
