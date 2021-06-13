@@ -2,41 +2,6 @@
 
 An interpreter for toy language, somewhat similar to PASCAL.
 
-Currently the syntax follows the following BNF:
-
-```bnf
-<stmt-list> ::= ϵ | <nonempty-stmt-list>
-<nonempty-stmt-list> ::= <stmt> | <stmt>; <nonempty-stmt-list>
-<stmt> ::= <funcdef-stmt> | <if-stmt> | <while-stmt> | <begin-stmt> | <assg-stmt> | <dump-stmt>
-<funcdef-stmt> ::= function <ident>(<param-list>): <type>; <begin-stmt>
-<param-list> ::= ϵ | <nonempty-param-list>
-<nonempty-param-list> ::= <ident>: <type> | <ident>: <type>, <nonempty-param-list>
-<if-stmt> ::= if <bool-expr> then <stmt> else <stmt>
-<while-stmt> ::= while <bool-expr> do <stmt>
-<begin-stmt> ::= begin <stmt-list> end
-<assg-stmt> ::= <var> := <arith-expr>
-<dump-stmt> ::= dump <var>
-<bool-expr> ::= <arith-expr><compare-op><arith-expr>
-<compare-op> ::= < | > | <= | >= | == | !=
-<arith-expr> ::= <mul-expr> | <arith-expr> + <mul-expr> | <arith-expr> - <mul-expr>
-<mul-expr> ::= <unary-expr> | <mul-expr> * <unary-expr> | <mul-expr> / <unary-expr>
-<unary-expr> ::= <primary-expr> | - <unary-expr>
-<primary-expr> ::= <var> | <const> | <fncall> | (<arith-expr>)
-<fncall> ::= <ident>(<argument-list>)
-<argument-list> ::= ϵ | <nonempty-argument-list>
-<nonempty-argument-list> ::= <arith-expr> | <arith-expr>, <nonempty-argument-list>
-<arith-op> ::= + | - | * | /
-<const> ::= <int-const> | <float-const>
-<int-const> ::= <digits>
-<float-const> ::= <digits> . <digits>
-<digits> ::= <digit> | <digit><digits>
-<digit> ::= 0 | 1 | 2 | ... | 9
-<var> ::= <ident>
-<type> ::= <ident>
-<ident> ::= <letter> | <var><letter> | <var><digit> | <var>_
-<letter> ::= a | b | ... | z | A | ... | Z
-```
-
 # Usage
 
 The interpreter is written in [Rust](https://www.rust-lang.org/ja), so you need to prepare build environment first. You can easily install it using the installer distributed at <https://rustup.rs/>.
