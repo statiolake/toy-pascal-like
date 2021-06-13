@@ -4,20 +4,20 @@ use itertools::izip;
 use itertools::Itertools as _;
 use std::collections::BTreeMap;
 
-pub fn run(program: &Program) {
+pub fn run(program: &ThirProgram) {
     let mut state = State::prepare_start(program);
     state.run();
 }
 
 pub struct State<'thir> {
-    prog: &'thir Program,
+    prog: &'thir ThirProgram,
     fn_id: FnId,
     scope_id: ScopeId,
     vars: BTreeMap<VarId, Option<Value>>,
 }
 
 impl<'thir> State<'thir> {
-    pub fn new_for(prog: &'thir Program, fn_id: FnId) -> Self {
+    pub fn new_for(prog: &'thir ThirProgram, fn_id: FnId) -> Self {
         // prepare variable tables
         let scope_id = prog.fnbody(fn_id).inner_scope_id;
         let scope = prog.scope(scope_id);
@@ -31,7 +31,7 @@ impl<'thir> State<'thir> {
         }
     }
 
-    pub fn prepare_start(program: &'thir Program) -> Self {
+    pub fn prepare_start(program: &'thir ThirProgram) -> Self {
         Self::new_for(program, program.start_fn_id)
     }
 }
@@ -69,7 +69,7 @@ impl State<'_> {
         let decl = self.prog.fndecl(self.fn_id);
         let body = self.prog.fnbody(self.fn_id);
         match &body.kind {
-            FnBodyKind::Stmt(stmt) => {
+            ThirFnBodyKind::Stmt(stmt) => {
                 // Set args to the local variable
                 for (param, arg) in izip!(&decl.params, args) {
                     if let Some(res) = param.res {
@@ -85,22 +85,22 @@ impl State<'_> {
                 self.run_begin_stmt(&*stmt);
                 self.vars[&decl.ret_var].as_ref().unwrap().clone()
             }
-            FnBodyKind::Builtin(dynfn) => dynfn(args),
+            ThirFnBodyKind::Builtin(dynfn) => dynfn(args),
         }
     }
 
-    fn run_stmt(&mut self, stmt: &Stmt) {
+    fn run_stmt(&mut self, stmt: &ThirStmt) {
         match &stmt.kind {
-            StmtKind::FnDef(_) => (),
-            StmtKind::If(stmt) => self.run_if_stmt(stmt),
-            StmtKind::While(stmt) => self.run_while_stmt(stmt),
-            StmtKind::Begin(stmt) => self.run_begin_stmt(stmt),
-            StmtKind::Assg(stmt) => self.run_assg_stmt(stmt),
-            StmtKind::Dump(stmt) => self.run_dump_stmt(stmt),
+            ThirStmtKind::FnDef(_) => (),
+            ThirStmtKind::If(stmt) => self.run_if_stmt(stmt),
+            ThirStmtKind::While(stmt) => self.run_while_stmt(stmt),
+            ThirStmtKind::Begin(stmt) => self.run_begin_stmt(stmt),
+            ThirStmtKind::Assg(stmt) => self.run_assg_stmt(stmt),
+            ThirStmtKind::Dump(stmt) => self.run_dump_stmt(stmt),
         }
     }
 
-    fn run_if_stmt(&mut self, stmt: &IfStmt) {
+    fn run_if_stmt(&mut self, stmt: &ThirIfStmt) {
         if self.eval_bool_expr(&*stmt.cond) {
             self.run_stmt(&*stmt.then);
         } else {
@@ -108,30 +108,30 @@ impl State<'_> {
         }
     }
 
-    fn run_while_stmt(&mut self, stmt: &WhileStmt) {
+    fn run_while_stmt(&mut self, stmt: &ThirWhileStmt) {
         while self.eval_bool_expr(&*stmt.cond) {
             self.run_stmt(&*stmt.body);
         }
     }
 
-    fn run_begin_stmt(&mut self, stmt: &BeginStmt) {
+    fn run_begin_stmt(&mut self, stmt: &ThirBeginStmt) {
         for stmt in &stmt.stmts {
             self.run_stmt(stmt);
         }
     }
 
-    fn run_assg_stmt(&mut self, stmt: &AssgStmt) {
+    fn run_assg_stmt(&mut self, stmt: &ThirAssgStmt) {
         *self.vars.get_mut(&stmt.var.res).unwrap() = Some(self.eval_arith_expr(&*stmt.expr));
     }
 
-    fn run_dump_stmt(&mut self, stmt: &DumpStmt) {
+    fn run_dump_stmt(&mut self, stmt: &ThirDumpStmt) {
         let scope = &self.prog.scope(self.scope_id);
         let var = &scope.vars[&stmt.var.res];
         let value = &self.vars[&stmt.var.res];
         println!("{} = {}", var.name.ident, value.as_ref().unwrap());
     }
 
-    fn eval_bool_expr(&self, stmt: &BoolExpr) -> bool {
+    fn eval_bool_expr(&self, stmt: &ThirBoolExpr) -> bool {
         let lhs = self.eval_arith_expr(&*stmt.lhs);
         let rhs = self.eval_arith_expr(&*stmt.rhs);
         match &stmt.op.kind {
@@ -146,13 +146,13 @@ impl State<'_> {
         }
     }
 
-    fn eval_arith_expr(&self, stmt: &ArithExpr) -> Value {
+    fn eval_arith_expr(&self, stmt: &ThirArithExpr) -> Value {
         match &stmt.kind {
-            ArithExprKind::Primary(e) => self.eval_primary_expr(e),
-            ArithExprKind::UnaryOp(op, e) => match op {
+            ThirArithExprKind::Primary(e) => self.eval_primary_expr(e),
+            ThirArithExprKind::UnaryOp(op, e) => match op {
                 crate::hir::UnaryOp::Neg => apply_op!(-, self.eval_arith_expr(e)),
             },
-            ArithExprKind::BinOp(op, l, r) => match op {
+            ThirArithExprKind::BinOp(op, l, r) => match op {
                 crate::hir::BinOp::Add => {
                     apply_op!(+, self.eval_arith_expr(l), self.eval_arith_expr(r))
                 }
@@ -169,24 +169,24 @@ impl State<'_> {
         }
     }
 
-    fn eval_primary_expr(&self, stmt: &PrimaryExpr) -> Value {
+    fn eval_primary_expr(&self, stmt: &ThirPrimaryExpr) -> Value {
         match &stmt.kind {
-            PrimaryExprKind::Var(var) => self.eval_var(&*var),
-            PrimaryExprKind::Const(cst) => self.eval_cst(&*cst),
-            PrimaryExprKind::FnCall(fncall) => self.eval_fncall(&*fncall),
-            PrimaryExprKind::Paren(expr) => self.eval_arith_expr(&*expr),
+            ThirPrimaryExprKind::Var(var) => self.eval_var(&*var),
+            ThirPrimaryExprKind::Const(cst) => self.eval_cst(&*cst),
+            ThirPrimaryExprKind::FnCall(fncall) => self.eval_fncall(&*fncall),
+            ThirPrimaryExprKind::Paren(expr) => self.eval_arith_expr(&*expr),
         }
     }
 
-    fn eval_var(&self, var: &VarRef) -> Value {
+    fn eval_var(&self, var: &ThirVarRef) -> Value {
         self.vars[&var.res].as_ref().unwrap().clone()
     }
 
-    fn eval_cst(&self, cst: &Const) -> Value {
+    fn eval_cst(&self, cst: &ThirConst) -> Value {
         cst.value.clone()
     }
 
-    fn eval_fncall(&self, fncall: &FnCall) -> Value {
+    fn eval_fncall(&self, fncall: &ThirFnCall) -> Value {
         let mut state = State::new_for(self.prog, fncall.res);
         let args = fncall
             .args
