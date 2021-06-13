@@ -1,10 +1,10 @@
-use crate::hir::{FnBodyKind, TyKind};
+use crate::hir::{HirFnBodyKind, TyKind};
 
 pub struct Builtin {
     pub name: String,
     pub params: Vec<(String, TyKind)>,
     pub ret_ty: TyKind,
-    pub body_kind: FnBodyKind,
+    pub body_kind: HirFnBodyKind,
 }
 
 #[macro_export]
@@ -98,7 +98,7 @@ macro_rules! make_builtin {
 
             $crate::wrap_ret!(ret, $ret_ty)
         };
-        let body_kind = $crate::hir::FnBodyKind::Builtin (Box::new(clos));
+        let body_kind = $crate::hir::HirFnBodyKind::Builtin (Box::new(clos));
 
         Builtin {
             name,

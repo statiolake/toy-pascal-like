@@ -50,45 +50,45 @@ impl Default for ItemIdGenerator {
 }
 
 #[derive(Debug)]
-pub struct Program {
-    pub scopes: BTreeMap<ScopeId, Scope>,
+pub struct HirProgram {
+    pub scopes: BTreeMap<ScopeId, HirScope>,
     pub start_fn_id: FnId,
-    pub fndecls: BTreeMap<FnId, FnDecl>,
-    pub fnbodies: BTreeMap<FnId, FnBody>,
+    pub fndecls: BTreeMap<FnId, HirFnDecl>,
+    pub fnbodies: BTreeMap<FnId, HirFnBody>,
 }
 
-impl Program {
-    pub fn scope(&self, id: ScopeId) -> &Scope {
+impl HirProgram {
+    pub fn scope(&self, id: ScopeId) -> &HirScope {
         self.scopes
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: scope of id {:?} not registered", id))
     }
 
-    pub fn fndecl(&self, id: FnId) -> &FnDecl {
+    pub fn fndecl(&self, id: FnId) -> &HirFnDecl {
         self.fndecls
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 
-    pub fn fnbody(&self, id: FnId) -> &FnBody {
+    pub fn fnbody(&self, id: FnId) -> &HirFnBody {
         self.fnbodies
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 
-    pub fn scope_mut(&mut self, id: ScopeId) -> &mut Scope {
+    pub fn scope_mut(&mut self, id: ScopeId) -> &mut HirScope {
         self.scopes
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: scope of id {:?} not registered", id))
     }
 
-    pub fn fndecl_mut(&mut self, id: FnId) -> &mut FnDecl {
+    pub fn fndecl_mut(&mut self, id: FnId) -> &mut HirFnDecl {
         self.fndecls
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 
-    pub fn fnbody_mut(&mut self, id: FnId) -> &mut FnBody {
+    pub fn fnbody_mut(&mut self, id: FnId) -> &mut HirFnBody {
         self.fnbodies
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
@@ -96,7 +96,7 @@ impl Program {
 }
 
 #[derive(Debug)]
-pub struct Scope {
+pub struct HirScope {
     /// ID for this scope
     pub id: ScopeId,
 
@@ -117,12 +117,12 @@ pub struct Scope {
     // local variables. Because this language doesn't have explicit variable declaration statement
     // (yet), all I can do here is to collect variables of the same name just once. Variable name
     // conflicts are later checked in resolver.
-    pub vars: BTreeMap<VarId, Var>,
+    pub vars: BTreeMap<VarId, HirVar>,
 }
 
-impl Scope {
-    pub fn new(id: ScopeId, parent_id: Option<ScopeId>) -> Scope {
-        Scope {
+impl HirScope {
+    pub fn new(id: ScopeId, parent_id: Option<ScopeId>) -> HirScope {
+        HirScope {
             id,
             parent_id,
             fn_ids: Vec::new(),
@@ -130,7 +130,7 @@ impl Scope {
         }
     }
 
-    pub fn var(&self, id: VarId) -> &Var {
+    pub fn var(&self, id: VarId) -> &HirVar {
         self.vars
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: variable of id {:?} not registered", id))
@@ -138,7 +138,7 @@ impl Scope {
 }
 
 #[derive(Debug)]
-pub struct FnDecl {
+pub struct HirFnDecl {
     /// ID for this function
     pub id: FnId,
 
@@ -147,19 +147,19 @@ pub struct FnDecl {
 
     pub span: Span,
     pub name: Ident,
-    pub params: Vec<Param>,
+    pub params: Vec<HirParam>,
     pub ret_var: RefCell<ResolveStatus<VarId>>,
-    pub ret_ty: Ty,
+    pub ret_ty: HirTy,
 }
 
 #[derive(Debug, Clone)]
-pub struct Param {
+pub struct HirParam {
     pub span: Span,
     // `name` is Option since builtin functions doesn't have parameter names. Their parameters
     // cannot be found as our interpreter's local variable table, since that's completely native
     // Rust closure arguments.
     pub res: Option<RefCell<ResolveStatus<VarId>>>,
-    pub ty: Ty,
+    pub ty: HirTy,
 }
 
 #[derive(Debug, Clone)]
@@ -183,7 +183,7 @@ pub enum TypeckStatus {
 }
 
 #[derive(Debug, Clone)]
-pub struct Ty {
+pub struct HirTy {
     pub span: Span,
     pub res: RefCell<ResolveStatus<TypeckStatus>>,
 }
@@ -206,89 +206,91 @@ impl fmt::Display for TyKind {
 }
 
 #[derive(Debug)]
-pub struct FnBody {
+pub struct HirFnBody {
     pub id: FnId,
     pub inner_scope_id: ScopeId,
-    pub kind: FnBodyKind,
+    pub kind: HirFnBodyKind,
 }
 
-pub enum FnBodyKind {
-    Stmt(Box<BeginStmt>),
+pub enum HirFnBodyKind {
+    Stmt(Box<HirBeginStmt>),
     Builtin(Box<dyn Fn(Vec<Value>) -> Value>),
 }
 
-impl fmt::Debug for FnBodyKind {
+impl fmt::Debug for HirFnBodyKind {
     fn fmt(&self, b: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FnBodyKind::Stmt(stmt) => b.debug_tuple("Stmt").field(&stmt).finish(),
-            FnBodyKind::Builtin(_) => b.debug_tuple("Builtin").field(&format_args!("_")).finish(),
+            HirFnBodyKind::Stmt(stmt) => b.debug_tuple("Stmt").field(&stmt).finish(),
+            HirFnBodyKind::Builtin(_) => {
+                b.debug_tuple("Builtin").field(&format_args!("_")).finish()
+            }
         }
     }
 }
 
 #[derive(Debug)]
-pub struct Var {
+pub struct HirVar {
     pub id: VarId,
     pub name: Ident,
-    pub ty: Ty,
+    pub ty: HirTy,
 }
 
 #[derive(Debug)]
-pub struct Stmt {
+pub struct HirStmt {
     pub span: Span,
-    pub kind: StmtKind,
+    pub kind: HirStmtKind,
 }
 
 #[derive(Debug)]
-pub enum StmtKind {
+pub enum HirStmtKind {
     FnDef(FnId),
-    If(IfStmt),
-    While(WhileStmt),
-    Begin(BeginStmt),
-    Assg(AssgStmt),
-    Dump(DumpStmt),
+    If(HirIfStmt),
+    While(HirWhileStmt),
+    Begin(HirBeginStmt),
+    Assg(HirAssgStmt),
+    Dump(HirDumpStmt),
 }
 
 #[derive(Debug)]
-pub struct IfStmt {
+pub struct HirIfStmt {
     pub span: Span,
-    pub cond: Box<BoolExpr>,
-    pub then: Box<Stmt>,
-    pub otherwise: Box<Stmt>,
+    pub cond: Box<HirBoolExpr>,
+    pub then: Box<HirStmt>,
+    pub otherwise: Box<HirStmt>,
 }
 
 #[derive(Debug)]
-pub struct WhileStmt {
+pub struct HirWhileStmt {
     pub span: Span,
-    pub cond: Box<BoolExpr>,
-    pub body: Box<Stmt>,
+    pub cond: Box<HirBoolExpr>,
+    pub body: Box<HirStmt>,
 }
 
 #[derive(Debug)]
-pub struct BeginStmt {
+pub struct HirBeginStmt {
     pub span: Span,
-    pub stmts: Vec<Stmt>,
+    pub stmts: Vec<HirStmt>,
 }
 
 #[derive(Debug)]
-pub struct AssgStmt {
+pub struct HirAssgStmt {
     pub span: Span,
-    pub var: Box<VarRef>,
-    pub expr: Box<ArithExpr>,
+    pub var: Box<HirVarRef>,
+    pub expr: Box<HirArithExpr>,
 }
 
 #[derive(Debug)]
-pub struct DumpStmt {
+pub struct HirDumpStmt {
     pub span: Span,
-    pub var: Box<VarRef>,
+    pub var: Box<HirVarRef>,
 }
 
 #[derive(Debug)]
-pub struct BoolExpr {
+pub struct HirBoolExpr {
     pub span: Span,
     pub op: Box<CompareOp>,
-    pub lhs: Box<ArithExpr>,
-    pub rhs: Box<ArithExpr>,
+    pub lhs: Box<HirArithExpr>,
+    pub rhs: Box<HirArithExpr>,
 }
 
 #[derive(Debug)]
@@ -308,17 +310,17 @@ pub enum CompareOpKind {
 }
 
 #[derive(Debug)]
-pub struct ArithExpr {
+pub struct HirArithExpr {
     pub span: Span,
-    pub ty: Ty,
-    pub kind: ArithExprKind,
+    pub ty: HirTy,
+    pub kind: HirArithExprKind,
 }
 
 #[derive(Debug)]
-pub enum ArithExprKind {
-    Primary(Box<PrimaryExpr>),
-    UnaryOp(UnaryOp, Box<ArithExpr>),
-    BinOp(BinOp, Box<ArithExpr>, Box<ArithExpr>),
+pub enum HirArithExprKind {
+    Primary(Box<HirPrimaryExpr>),
+    UnaryOp(UnaryOp, Box<HirArithExpr>),
+    BinOp(BinOp, Box<HirArithExpr>, Box<HirArithExpr>),
 }
 
 #[derive(Debug)]
@@ -335,30 +337,30 @@ pub enum BinOp {
 }
 
 #[derive(Debug)]
-pub struct PrimaryExpr {
+pub struct HirPrimaryExpr {
     pub span: Span,
-    pub ty: Ty,
-    pub kind: PrimaryExprKind,
+    pub ty: HirTy,
+    pub kind: HirPrimaryExprKind,
 }
 
 #[derive(Debug)]
-pub enum PrimaryExprKind {
-    Var(Box<VarRef>),
-    Const(Box<Const>),
-    FnCall(Box<FnCall>),
-    Paren(Box<ArithExpr>),
+pub enum HirPrimaryExprKind {
+    Var(Box<HirVarRef>),
+    Const(Box<HirConst>),
+    FnCall(Box<HirFnCall>),
+    Paren(Box<HirArithExpr>),
 }
 
 #[derive(Debug)]
-pub struct VarRef {
+pub struct HirVarRef {
     pub span: Span,
     pub res: RefCell<ResolveStatus<VarId>>,
 }
 
 #[derive(Debug)]
-pub struct Const {
+pub struct HirConst {
     pub span: Span,
-    pub ty: Ty,
+    pub ty: HirTy,
     pub value: Value,
 }
 
@@ -381,9 +383,9 @@ impl fmt::Display for Value {
 }
 
 #[derive(Debug)]
-pub struct FnCall {
+pub struct HirFnCall {
     pub span: Span,
     pub span_name: Span,
     pub res: RefCell<ResolveStatus<FnId>>,
-    pub args: Vec<ArithExpr>,
+    pub args: Vec<HirArithExpr>,
 }
