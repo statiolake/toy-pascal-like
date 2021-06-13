@@ -62,7 +62,7 @@ impl ResolverErrorKind {
 
 pub type Result<T, E = ResolverError> = std::result::Result<T, E>;
 
-pub fn resolve_hir(prog: HirProgram) -> Result<rhir::Program, Vec<ResolverError>> {
+pub fn resolve_hir(prog: HirProgram) -> Result<rhir::RhirProgram, Vec<ResolverError>> {
     Resolver::from_program(prog).resolve()
 }
 
@@ -76,7 +76,7 @@ impl Resolver {
         Self { prog }
     }
 
-    pub fn resolve(self) -> Result<rhir::Program, Vec<ResolverError>> {
+    pub fn resolve(self) -> Result<rhir::RhirProgram, Vec<ResolverError>> {
         self.resolve_all()?;
         self.validate();
 
@@ -403,7 +403,7 @@ impl Resolver {
 }
 
 impl Resolver {
-    fn into_rhir(self) -> rhir::Program {
+    fn into_rhir(self) -> rhir::RhirProgram {
         let HirProgram {
             scopes,
             start_fn_id,
@@ -415,35 +415,39 @@ impl Resolver {
         let fndecls = convert_fndecls(fndecls);
         let fnbodies = convert_fnbodies(fnbodies);
 
-        return rhir::Program {
+        return rhir::RhirProgram {
             scopes,
             start_fn_id,
             fndecls,
             fnbodies,
         };
 
-        fn convert_scopes(scopes: BTreeMap<ScopeId, HirScope>) -> BTreeMap<ScopeId, rhir::Scope> {
+        fn convert_scopes(
+            scopes: BTreeMap<ScopeId, HirScope>,
+        ) -> BTreeMap<ScopeId, rhir::RhirScope> {
             scopes
                 .into_iter()
                 .map(|(id, scope)| (id, convert_scope(scope)))
                 .collect()
         }
 
-        fn convert_fndecls(fndecls: BTreeMap<FnId, HirFnDecl>) -> BTreeMap<FnId, rhir::FnDecl> {
+        fn convert_fndecls(fndecls: BTreeMap<FnId, HirFnDecl>) -> BTreeMap<FnId, rhir::RhirFnDecl> {
             fndecls
                 .into_iter()
                 .map(|(id, fndecl)| (id, convert_fndecl(fndecl)))
                 .collect()
         }
 
-        fn convert_fnbodies(fnbodies: BTreeMap<FnId, HirFnBody>) -> BTreeMap<FnId, rhir::FnBody> {
+        fn convert_fnbodies(
+            fnbodies: BTreeMap<FnId, HirFnBody>,
+        ) -> BTreeMap<FnId, rhir::RhirFnBody> {
             fnbodies
                 .into_iter()
                 .map(|(id, fnbody)| (id, convert_fnbody(fnbody)))
                 .collect()
         }
 
-        fn convert_scope(scope: HirScope) -> rhir::Scope {
+        fn convert_scope(scope: HirScope) -> rhir::RhirScope {
             let HirScope {
                 id,
                 parent_id,
@@ -452,7 +456,7 @@ impl Resolver {
             } = scope;
             let vars = convert_vars(vars);
 
-            rhir::Scope {
+            rhir::RhirScope {
                 id,
                 parent_id,
                 fn_ids,
@@ -460,20 +464,20 @@ impl Resolver {
             }
         }
 
-        fn convert_vars(vars: BTreeMap<VarId, HirVar>) -> BTreeMap<VarId, rhir::Var> {
+        fn convert_vars(vars: BTreeMap<VarId, HirVar>) -> BTreeMap<VarId, rhir::RhirVar> {
             vars.into_iter()
                 .map(|(id, var)| (id, convert_var(var)))
                 .collect()
         }
 
-        fn convert_var(var: HirVar) -> rhir::Var {
+        fn convert_var(var: HirVar) -> rhir::RhirVar {
             let HirVar { id, name, ty } = var;
             let ty = convert_ty(ty);
 
-            rhir::Var { id, name, ty }
+            rhir::RhirVar { id, name, ty }
         }
 
-        fn convert_fndecl(fndecl: HirFnDecl) -> rhir::FnDecl {
+        fn convert_fndecl(fndecl: HirFnDecl) -> rhir::RhirFnDecl {
             let HirFnDecl {
                 id,
                 scope_id,
@@ -488,7 +492,7 @@ impl Resolver {
             let ret_var = convert_res(ret_var);
             let ret_ty = convert_ty(ret_ty);
 
-            rhir::FnDecl {
+            rhir::RhirFnDecl {
                 id,
                 scope_id,
                 span,
@@ -499,22 +503,22 @@ impl Resolver {
             }
         }
 
-        fn convert_param(param: HirParam) -> rhir::Param {
+        fn convert_param(param: HirParam) -> rhir::RhirParam {
             let HirParam { span, res, ty } = param;
             let ty = convert_ty(ty);
 
-            rhir::Param {
+            rhir::RhirParam {
                 span,
                 res: res.map(convert_res),
                 ty,
             }
         }
 
-        fn convert_ty(ty: HirTy) -> rhir::Ty {
+        fn convert_ty(ty: HirTy) -> rhir::RhirTy {
             let HirTy { span, res } = ty;
             let res = RefCell::new(convert_res(res));
 
-            rhir::Ty { span, res }
+            rhir::RhirTy { span, res }
         }
 
         fn convert_res<T: Clone>(res: RefCell<ResolveStatus<T>>) -> T {
@@ -525,7 +529,7 @@ impl Resolver {
             }
         }
 
-        fn convert_fnbody(fnbody: HirFnBody) -> rhir::FnBody {
+        fn convert_fnbody(fnbody: HirFnBody) -> rhir::RhirFnBody {
             let HirFnBody {
                 id,
                 inner_scope_id,
@@ -533,33 +537,33 @@ impl Resolver {
             } = fnbody;
             let kind = match kind {
                 HirFnBodyKind::Stmt(stmt) => {
-                    rhir::FnBodyKind::Stmt(Box::new(convert_begin_stmt(*stmt)))
+                    rhir::RhirFnBodyKind::Stmt(Box::new(convert_begin_stmt(*stmt)))
                 }
-                HirFnBodyKind::Builtin(dynfn) => rhir::FnBodyKind::Builtin(dynfn),
+                HirFnBodyKind::Builtin(dynfn) => rhir::RhirFnBodyKind::Builtin(dynfn),
             };
 
-            rhir::FnBody {
+            rhir::RhirFnBody {
                 id,
                 inner_scope_id,
                 kind,
             }
         }
 
-        fn convert_stmt(stmt: HirStmt) -> rhir::Stmt {
+        fn convert_stmt(stmt: HirStmt) -> rhir::RhirStmt {
             let HirStmt { span, kind } = stmt;
             let kind = match kind {
-                HirStmtKind::FnDef(id) => rhir::StmtKind::FnDef(id),
-                HirStmtKind::If(stmt) => rhir::StmtKind::If(convert_if_stmt(stmt)),
-                HirStmtKind::While(stmt) => rhir::StmtKind::While(convert_while_stmt(stmt)),
-                HirStmtKind::Begin(stmt) => rhir::StmtKind::Begin(convert_begin_stmt(stmt)),
-                HirStmtKind::Assg(stmt) => rhir::StmtKind::Assg(convert_assg_stmt(stmt)),
-                HirStmtKind::Dump(stmt) => rhir::StmtKind::Dump(convert_dump_stmt(stmt)),
+                HirStmtKind::FnDef(id) => rhir::RhirStmtKind::FnDef(id),
+                HirStmtKind::If(stmt) => rhir::RhirStmtKind::If(convert_if_stmt(stmt)),
+                HirStmtKind::While(stmt) => rhir::RhirStmtKind::While(convert_while_stmt(stmt)),
+                HirStmtKind::Begin(stmt) => rhir::RhirStmtKind::Begin(convert_begin_stmt(stmt)),
+                HirStmtKind::Assg(stmt) => rhir::RhirStmtKind::Assg(convert_assg_stmt(stmt)),
+                HirStmtKind::Dump(stmt) => rhir::RhirStmtKind::Dump(convert_dump_stmt(stmt)),
             };
 
-            rhir::Stmt { span, kind }
+            rhir::RhirStmt { span, kind }
         }
 
-        fn convert_if_stmt(stmt: HirIfStmt) -> rhir::IfStmt {
+        fn convert_if_stmt(stmt: HirIfStmt) -> rhir::RhirIfStmt {
             let HirIfStmt {
                 span,
                 cond,
@@ -571,7 +575,7 @@ impl Resolver {
             let then = Box::new(convert_stmt(*then));
             let otherwise = Box::new(convert_stmt(*otherwise));
 
-            rhir::IfStmt {
+            rhir::RhirIfStmt {
                 span,
                 cond,
                 then,
@@ -579,86 +583,86 @@ impl Resolver {
             }
         }
 
-        fn convert_begin_stmt(stmt: HirBeginStmt) -> rhir::BeginStmt {
+        fn convert_begin_stmt(stmt: HirBeginStmt) -> rhir::RhirBeginStmt {
             let HirBeginStmt { span, stmts } = stmt;
             let stmts = stmts.into_iter().map(convert_stmt).collect_vec();
 
-            rhir::BeginStmt { span, stmts }
+            rhir::RhirBeginStmt { span, stmts }
         }
 
-        fn convert_while_stmt(stmt: HirWhileStmt) -> rhir::WhileStmt {
+        fn convert_while_stmt(stmt: HirWhileStmt) -> rhir::RhirWhileStmt {
             let HirWhileStmt { span, cond, body } = stmt;
             let cond = Box::new(convert_bool_expr(*cond));
             let body = Box::new(convert_stmt(*body));
 
-            rhir::WhileStmt { span, cond, body }
+            rhir::RhirWhileStmt { span, cond, body }
         }
 
-        fn convert_assg_stmt(stmt: HirAssgStmt) -> rhir::AssgStmt {
+        fn convert_assg_stmt(stmt: HirAssgStmt) -> rhir::RhirAssgStmt {
             let HirAssgStmt { span, var, expr } = stmt;
             let var = Box::new(convert_var_ref(*var));
             let expr = Box::new(convert_arith_expr(*expr));
 
-            rhir::AssgStmt { span, var, expr }
+            rhir::RhirAssgStmt { span, var, expr }
         }
 
-        fn convert_dump_stmt(stmt: HirDumpStmt) -> rhir::DumpStmt {
+        fn convert_dump_stmt(stmt: HirDumpStmt) -> rhir::RhirDumpStmt {
             let HirDumpStmt { span, var } = stmt;
             let var = Box::new(convert_var_ref(*var));
 
-            rhir::DumpStmt { span, var }
+            rhir::RhirDumpStmt { span, var }
         }
 
-        fn convert_bool_expr(expr: HirBoolExpr) -> rhir::BoolExpr {
+        fn convert_bool_expr(expr: HirBoolExpr) -> rhir::RhirBoolExpr {
             let HirBoolExpr { span, op, lhs, rhs } = expr;
             let lhs = Box::new(convert_arith_expr(*lhs));
             let rhs = Box::new(convert_arith_expr(*rhs));
 
-            rhir::BoolExpr { span, op, lhs, rhs }
+            rhir::RhirBoolExpr { span, op, lhs, rhs }
         }
 
-        fn convert_arith_expr(expr: HirArithExpr) -> rhir::ArithExpr {
+        fn convert_arith_expr(expr: HirArithExpr) -> rhir::RhirArithExpr {
             let HirArithExpr { span, ty, kind } = expr;
             let ty = convert_ty(ty);
             let kind = match kind {
                 HirArithExprKind::Primary(e) => {
-                    rhir::ArithExprKind::Primary(Box::new(convert_primary_expr(*e)))
+                    rhir::RhirArithExprKind::Primary(Box::new(convert_primary_expr(*e)))
                 }
                 HirArithExprKind::UnaryOp(op, e) => {
-                    rhir::ArithExprKind::UnaryOp(op, Box::new(convert_arith_expr(*e)))
+                    rhir::RhirArithExprKind::UnaryOp(op, Box::new(convert_arith_expr(*e)))
                 }
-                HirArithExprKind::BinOp(op, lhs, rhs) => rhir::ArithExprKind::BinOp(
+                HirArithExprKind::BinOp(op, lhs, rhs) => rhir::RhirArithExprKind::BinOp(
                     op,
                     Box::new(convert_arith_expr(*lhs)),
                     Box::new(convert_arith_expr(*rhs)),
                 ),
             };
 
-            rhir::ArithExpr { span, ty, kind }
+            rhir::RhirArithExpr { span, ty, kind }
         }
 
-        fn convert_primary_expr(expr: HirPrimaryExpr) -> rhir::PrimaryExpr {
+        fn convert_primary_expr(expr: HirPrimaryExpr) -> rhir::RhirPrimaryExpr {
             let HirPrimaryExpr { span, ty, kind } = expr;
             let ty = convert_ty(ty);
             let kind = match kind {
                 HirPrimaryExprKind::Var(var) => {
-                    rhir::PrimaryExprKind::Var(Box::new(convert_var_ref(*var)))
+                    rhir::RhirPrimaryExprKind::Var(Box::new(convert_var_ref(*var)))
                 }
                 HirPrimaryExprKind::Const(cst) => {
-                    rhir::PrimaryExprKind::Const(Box::new(convert_const(*cst)))
+                    rhir::RhirPrimaryExprKind::Const(Box::new(convert_const(*cst)))
                 }
                 HirPrimaryExprKind::FnCall(fncall) => {
-                    rhir::PrimaryExprKind::FnCall(Box::new(convert_fncall(*fncall)))
+                    rhir::RhirPrimaryExprKind::FnCall(Box::new(convert_fncall(*fncall)))
                 }
                 HirPrimaryExprKind::Paren(expr) => {
-                    rhir::PrimaryExprKind::Paren(Box::new(convert_arith_expr(*expr)))
+                    rhir::RhirPrimaryExprKind::Paren(Box::new(convert_arith_expr(*expr)))
                 }
             };
 
-            rhir::PrimaryExpr { span, ty, kind }
+            rhir::RhirPrimaryExpr { span, ty, kind }
         }
 
-        fn convert_fncall(fncall: HirFnCall) -> rhir::FnCall {
+        fn convert_fncall(fncall: HirFnCall) -> rhir::RhirFnCall {
             let HirFnCall {
                 span,
                 span_name,
@@ -668,7 +672,7 @@ impl Resolver {
             let res = convert_res(res);
             let args = args.into_iter().map(convert_arith_expr).collect_vec();
 
-            rhir::FnCall {
+            rhir::RhirFnCall {
                 span,
                 span_name,
                 res,
@@ -676,18 +680,18 @@ impl Resolver {
             }
         }
 
-        fn convert_var_ref(var: HirVarRef) -> rhir::VarRef {
+        fn convert_var_ref(var: HirVarRef) -> rhir::RhirVarRef {
             let HirVarRef { span, res } = var;
             let res = convert_res(res);
 
-            rhir::VarRef { span, res }
+            rhir::RhirVarRef { span, res }
         }
 
-        fn convert_const(cst: HirConst) -> rhir::Const {
+        fn convert_const(cst: HirConst) -> rhir::RhirConst {
             let HirConst { span, ty, value } = cst;
             let ty = convert_ty(ty);
 
-            rhir::Const { span, ty, value }
+            rhir::RhirConst { span, ty, value }
         }
     }
 }

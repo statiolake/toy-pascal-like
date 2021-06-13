@@ -1,49 +1,49 @@
-use crate::hir::{BinOp, CompareOp, FnId, Ident, ScopeId, TypeckStatus, UnaryOp, Value, VarId};
+use crate::hir::*;
 use crate::span::Span;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug)]
-pub struct Program {
-    pub scopes: BTreeMap<ScopeId, Scope>,
+pub struct RhirProgram {
+    pub scopes: BTreeMap<ScopeId, RhirScope>,
     pub start_fn_id: FnId,
-    pub fndecls: BTreeMap<FnId, FnDecl>,
-    pub fnbodies: BTreeMap<FnId, FnBody>,
+    pub fndecls: BTreeMap<FnId, RhirFnDecl>,
+    pub fnbodies: BTreeMap<FnId, RhirFnBody>,
 }
 
-impl Program {
-    pub fn scope(&self, id: ScopeId) -> &Scope {
+impl RhirProgram {
+    pub fn scope(&self, id: ScopeId) -> &RhirScope {
         self.scopes
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: scope of id {:?} not registered", id))
     }
 
-    pub fn fndecl(&self, id: FnId) -> &FnDecl {
+    pub fn fndecl(&self, id: FnId) -> &RhirFnDecl {
         self.fndecls
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 
-    pub fn fnbody(&self, id: FnId) -> &FnBody {
+    pub fn fnbody(&self, id: FnId) -> &RhirFnBody {
         self.fnbodies
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 
-    pub fn scope_mut(&mut self, id: ScopeId) -> &mut Scope {
+    pub fn scope_mut(&mut self, id: ScopeId) -> &mut RhirScope {
         self.scopes
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: scope of id {:?} not registered", id))
     }
 
-    pub fn fndecl_mut(&mut self, id: FnId) -> &mut FnDecl {
+    pub fn fndecl_mut(&mut self, id: FnId) -> &mut RhirFnDecl {
         self.fndecls
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 
-    pub fn fnbody_mut(&mut self, id: FnId) -> &mut FnBody {
+    pub fn fnbody_mut(&mut self, id: FnId) -> &mut RhirFnBody {
         self.fnbodies
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
@@ -51,15 +51,15 @@ impl Program {
 }
 
 #[derive(Debug)]
-pub struct Scope {
+pub struct RhirScope {
     pub id: ScopeId,
     pub parent_id: Option<ScopeId>,
     pub fn_ids: Vec<FnId>,
-    pub vars: BTreeMap<VarId, Var>,
+    pub vars: BTreeMap<VarId, RhirVar>,
 }
 
-impl Scope {
-    pub fn var(&self, id: VarId) -> &Var {
+impl RhirScope {
+    pub fn var(&self, id: VarId) -> &RhirVar {
         self.vars
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: variable of id {:?} not registered", id))
@@ -67,7 +67,7 @@ impl Scope {
 }
 
 #[derive(Debug)]
-pub struct FnDecl {
+pub struct RhirFnDecl {
     /// ID for this function
     pub id: FnId,
 
@@ -76,158 +76,160 @@ pub struct FnDecl {
 
     pub span: Span,
     pub name: Ident,
-    pub params: Vec<Param>,
+    pub params: Vec<RhirParam>,
     pub ret_var: VarId,
-    pub ret_ty: Ty,
+    pub ret_ty: RhirTy,
 }
 
 #[derive(Debug, Clone)]
-pub struct Param {
+pub struct RhirParam {
     pub span: Span,
     // None if this parameter is of buitlin functions: they are just Rust native closures so they
     // don't have corresponding local variables for parameters.
     pub res: Option<VarId>,
-    pub ty: Ty,
+    pub ty: RhirTy,
 }
 
 #[derive(Debug, Clone)]
-pub struct Ty {
+pub struct RhirTy {
     pub span: Span,
     pub res: RefCell<TypeckStatus>,
 }
 
 #[derive(Debug)]
-pub struct FnBody {
+pub struct RhirFnBody {
     pub id: FnId,
     pub inner_scope_id: ScopeId,
-    pub kind: FnBodyKind,
+    pub kind: RhirFnBodyKind,
 }
 
-pub enum FnBodyKind {
-    Stmt(Box<BeginStmt>),
+pub enum RhirFnBodyKind {
+    Stmt(Box<RhirBeginStmt>),
     Builtin(Box<dyn Fn(Vec<Value>) -> Value>),
 }
 
-impl fmt::Debug for FnBodyKind {
+impl fmt::Debug for RhirFnBodyKind {
     fn fmt(&self, b: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FnBodyKind::Stmt(stmt) => b.debug_tuple("Stmt").field(&stmt).finish(),
-            FnBodyKind::Builtin(_) => b.debug_tuple("Builtin").field(&format_args!("_")).finish(),
+            RhirFnBodyKind::Stmt(stmt) => b.debug_tuple("Stmt").field(&stmt).finish(),
+            RhirFnBodyKind::Builtin(_) => {
+                b.debug_tuple("Builtin").field(&format_args!("_")).finish()
+            }
         }
     }
 }
 
 #[derive(Debug)]
-pub struct Var {
+pub struct RhirVar {
     pub id: VarId,
     pub name: Ident,
-    pub ty: Ty,
+    pub ty: RhirTy,
 }
 
 #[derive(Debug)]
-pub struct Stmt {
+pub struct RhirStmt {
     pub span: Span,
-    pub kind: StmtKind,
+    pub kind: RhirStmtKind,
 }
 
 #[derive(Debug)]
-pub enum StmtKind {
+pub enum RhirStmtKind {
     FnDef(FnId),
-    If(IfStmt),
-    While(WhileStmt),
-    Begin(BeginStmt),
-    Assg(AssgStmt),
-    Dump(DumpStmt),
+    If(RhirIfStmt),
+    While(RhirWhileStmt),
+    Begin(RhirBeginStmt),
+    Assg(RhirAssgStmt),
+    Dump(RhirDumpStmt),
 }
 
 #[derive(Debug)]
-pub struct IfStmt {
+pub struct RhirIfStmt {
     pub span: Span,
-    pub cond: Box<BoolExpr>,
-    pub then: Box<Stmt>,
-    pub otherwise: Box<Stmt>,
+    pub cond: Box<RhirBoolExpr>,
+    pub then: Box<RhirStmt>,
+    pub otherwise: Box<RhirStmt>,
 }
 
 #[derive(Debug)]
-pub struct WhileStmt {
+pub struct RhirWhileStmt {
     pub span: Span,
-    pub cond: Box<BoolExpr>,
-    pub body: Box<Stmt>,
+    pub cond: Box<RhirBoolExpr>,
+    pub body: Box<RhirStmt>,
 }
 
 #[derive(Debug)]
-pub struct BeginStmt {
+pub struct RhirBeginStmt {
     pub span: Span,
-    pub stmts: Vec<Stmt>,
+    pub stmts: Vec<RhirStmt>,
 }
 
 #[derive(Debug)]
-pub struct AssgStmt {
+pub struct RhirAssgStmt {
     pub span: Span,
-    pub var: Box<VarRef>,
-    pub expr: Box<ArithExpr>,
+    pub var: Box<RhirVarRef>,
+    pub expr: Box<RhirArithExpr>,
 }
 
 #[derive(Debug)]
-pub struct DumpStmt {
+pub struct RhirDumpStmt {
     pub span: Span,
-    pub var: Box<VarRef>,
+    pub var: Box<RhirVarRef>,
 }
 
 #[derive(Debug)]
-pub struct BoolExpr {
+pub struct RhirBoolExpr {
     pub span: Span,
     pub op: Box<CompareOp>,
-    pub lhs: Box<ArithExpr>,
-    pub rhs: Box<ArithExpr>,
+    pub lhs: Box<RhirArithExpr>,
+    pub rhs: Box<RhirArithExpr>,
 }
 
 #[derive(Debug)]
-pub struct ArithExpr {
+pub struct RhirArithExpr {
     pub span: Span,
-    pub ty: Ty,
-    pub kind: ArithExprKind,
+    pub ty: RhirTy,
+    pub kind: RhirArithExprKind,
 }
 
 #[derive(Debug)]
-pub enum ArithExprKind {
-    Primary(Box<PrimaryExpr>),
-    UnaryOp(UnaryOp, Box<ArithExpr>),
-    BinOp(BinOp, Box<ArithExpr>, Box<ArithExpr>),
+pub enum RhirArithExprKind {
+    Primary(Box<RhirPrimaryExpr>),
+    UnaryOp(UnaryOp, Box<RhirArithExpr>),
+    BinOp(BinOp, Box<RhirArithExpr>, Box<RhirArithExpr>),
 }
 
 #[derive(Debug)]
-pub struct PrimaryExpr {
+pub struct RhirPrimaryExpr {
     pub span: Span,
-    pub ty: Ty,
-    pub kind: PrimaryExprKind,
+    pub ty: RhirTy,
+    pub kind: RhirPrimaryExprKind,
 }
 
 #[derive(Debug)]
-pub enum PrimaryExprKind {
-    Var(Box<VarRef>),
-    Const(Box<Const>),
-    FnCall(Box<FnCall>),
-    Paren(Box<ArithExpr>),
+pub enum RhirPrimaryExprKind {
+    Var(Box<RhirVarRef>),
+    Const(Box<RhirConst>),
+    FnCall(Box<RhirFnCall>),
+    Paren(Box<RhirArithExpr>),
 }
 
 #[derive(Debug)]
-pub struct VarRef {
+pub struct RhirVarRef {
     pub span: Span,
     pub res: VarId,
 }
 
 #[derive(Debug)]
-pub struct Const {
+pub struct RhirConst {
     pub span: Span,
-    pub ty: Ty,
+    pub ty: RhirTy,
     pub value: Value,
 }
 
 #[derive(Debug)]
-pub struct FnCall {
+pub struct RhirFnCall {
     pub span: Span,
     pub span_name: Span,
     pub res: FnId,
-    pub args: Vec<ArithExpr>,
+    pub args: Vec<RhirArithExpr>,
 }
