@@ -6,6 +6,7 @@ use crate::span::Span;
 use itertools::Itertools as _;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::mem::replace;
 
 #[derive(thiserror::Error, Debug)]
 #[error("{span:?}: {kind}")]
@@ -23,7 +24,16 @@ pub enum ResolverErrorKind {
     UndeclaredVariable { ident: String },
 
     #[error("variable `{ident}` is read before initialization")]
-    UseBeforeInit { ident: String },
+    ReadBeforeInit { ident: String },
+
+    #[error("variable `{ident}` is not always initialized")]
+    PossiblyReadBeforeInit { ident: String },
+
+    #[error("return value is not specified")]
+    RetVarUninit,
+
+    #[error("return value is not always specified")]
+    PossiblyRetVarUninit,
 
     #[error("unknown type: `{ident}`")]
     UnknownTy { ident: String },
@@ -38,7 +48,12 @@ impl ResolverErrorKind {
         match self {
             ResolverErrorKind::UndeclaredFunction { .. } => "unknown function name".to_string(),
             ResolverErrorKind::UndeclaredVariable { .. } => "unknown variable name".to_string(),
-            ResolverErrorKind::UseBeforeInit { .. } => "used but not initialized".to_string(),
+            ResolverErrorKind::ReadBeforeInit { .. } => "used but not initialized".to_string(),
+            ResolverErrorKind::PossiblyReadBeforeInit { .. } => "not always assigned".to_string(),
+            ResolverErrorKind::RetVarUninit => "return value not specified".to_string(),
+            ResolverErrorKind::PossiblyRetVarUninit => {
+                "return value not always specified".to_string()
+            }
             ResolverErrorKind::UnknownTy { .. } => "unknown type".to_string(),
             ResolverErrorKind::AlreadyDefinedVariable { .. } => "already defined".to_string(),
         }
@@ -71,11 +86,8 @@ impl Resolver {
 
 impl Resolver {
     fn resolve_all(&self) -> Result<(), Vec<ResolverError>> {
-        let scope_id = self.prog.fndecl(self.prog.start_fn_id).scope_id;
-        let mut visitor = VisitorContext {
+        let mut visitor = ProgVisitorContext {
             prog: &self.prog,
-            scope_id,
-            visible_vars: BTreeSet::new(),
             errors: vec![],
         };
         visitor.visit_all(&self.prog);
@@ -85,10 +97,23 @@ impl Resolver {
             Err(visitor.errors)
         };
 
-        struct VisitorContext<'hir> {
+        struct ProgVisitorContext<'hir> {
+            prog: &'hir Program,
+            errors: Vec<ResolverError>,
+        }
+
+        struct FnBodyVisitorContext<'hir> {
             prog: &'hir Program,
             scope_id: ScopeId,
-            visible_vars: BTreeSet<VarId>,
+
+            /// Variables once visible in the scope. This is for example variables only declared at
+            /// then statement of if. Only used for providing clearer diagnosis.
+            once_init_vars: BTreeSet<VarId>,
+
+            /// Variables always visible in the scope. This is for example variables declared in
+            /// this scope, or variables declared both then and otherwise statements.
+            init_vars: BTreeSet<VarId>,
+
             errors: Vec<ResolverError>,
         }
 
@@ -130,7 +155,7 @@ impl Resolver {
             }
         }
 
-        impl VisitorContext<'_> {
+        impl FnBodyVisitorContext<'_> {
             fn resolve_var_ref(&mut self, var_ref: &VarRef, is_assign: bool) -> Result<()> {
                 let scope = self.prog.scope(self.scope_id);
 
@@ -148,15 +173,20 @@ impl Resolver {
                     // if the variable actually found but it's not yet visible, then register it as
                     // a visible variable if this is assign statement, and otherwise it's
                     // use-before-init error.
-                    if !self.visible_vars.contains(&var_id) {
+                    if !self.init_vars.contains(&var_id) {
                         if is_assign {
-                            self.visible_vars.insert(var_id);
+                            self.once_init_vars.insert(var_id);
+                            self.init_vars.insert(var_id);
                         } else {
                             let ident = name.ident.clone();
                             *var_ref.res.borrow_mut() = ResolveStatus::Err(name);
                             return Err(ResolverError {
                                 span: var_ref.span,
-                                kind: ResolverErrorKind::UseBeforeInit { ident },
+                                kind: if self.once_init_vars.contains(&var_id) {
+                                    ResolverErrorKind::PossiblyReadBeforeInit { ident }
+                                } else {
+                                    ResolverErrorKind::ReadBeforeInit { ident }
+                                },
                             });
                         }
                     }
@@ -193,12 +223,19 @@ impl Resolver {
             }
         }
 
-        impl Visit for VisitorContext<'_> {
+        impl Visit for ProgVisitorContext<'_> {
+            fn visit_ty(&mut self, ty: &Ty) {
+                if let Err(err) = resolve_primitive_ty(ty) {
+                    self.errors.push(err);
+                    return;
+                }
+            }
+
             fn visit_fnbody(&mut self, fnbody: &FnBody) {
                 // set up new local variable tables
-                self.visible_vars = BTreeSet::new();
-                self.scope_id = fnbody.inner_scope_id;
-                let scope = self.prog.scope(self.scope_id);
+                let mut init_vars = BTreeSet::new();
+                let scope_id = fnbody.inner_scope_id;
+                let scope = self.prog.scope(scope_id);
 
                 // params and return variable should be registered to the local vars table.
                 let fndecl = self.prog.fndecl(fnbody.id);
@@ -214,7 +251,7 @@ impl Resolver {
                 *fndecl.ret_var.borrow_mut() = ResolveStatus::Resolved(ret_var_id);
                 // Add return variable even if it's void: if void value is specified as a return
                 // value, it should be accepted.
-                self.visible_vars.insert(ret_var_id);
+                init_vars.insert(ret_var_id);
 
                 // find params and make it visible ...
                 for param in &fndecl.params {
@@ -238,7 +275,7 @@ impl Resolver {
                             }
                         };
 
-                        if !self.visible_vars.insert(param_var_id) {
+                        if !init_vars.insert(param_var_id) {
                             // if the specified var_id is already visible: more than one parameters have
                             // the same name in this fndecl.
                             self.errors.push(ResolverError {
@@ -255,14 +292,63 @@ impl Resolver {
                     }
                 }
 
-                hir_visit::visit_fnbody(self, fnbody);
-            }
+                let once_init_vars = init_vars.clone();
+                let mut fnbody_visitor = FnBodyVisitorContext {
+                    prog: self.prog,
+                    scope_id,
+                    init_vars,
+                    once_init_vars,
+                    errors: Vec::new(),
+                };
+                fnbody_visitor.visit_fnbody(&fnbody);
 
+                // check return value is initialized
+                if !fnbody_visitor.init_vars.contains(&ret_var_id) {
+                    self.errors.push(ResolverError {
+                        span: fndecl.span,
+                        kind: if fnbody_visitor.once_init_vars.contains(&ret_var_id) {
+                            ResolverErrorKind::PossiblyRetVarUninit
+                        } else {
+                            ResolverErrorKind::RetVarUninit
+                        },
+                    });
+                }
+
+                self.errors.extend(fnbody_visitor.errors);
+            }
+        }
+
+        impl Visit for FnBodyVisitorContext<'_> {
             fn visit_ty(&mut self, ty: &Ty) {
                 if let Err(err) = resolve_primitive_ty(ty) {
                     self.errors.push(err);
                     return;
                 }
+            }
+
+            fn visit_if_stmt(&mut self, stmt: &IfStmt) {
+                self.visit_bool_expr(&stmt.cond);
+
+                // if stmt may create "possibly uninitialized variables".
+                let init_vars = self.init_vars.clone();
+                self.visit_stmt(&stmt.then);
+                let then_init_vars = replace(&mut self.init_vars, init_vars);
+                self.visit_stmt(&stmt.otherwise);
+                let otherwise_init_vars = self.init_vars.clone();
+
+                // init_vars are initialized variables on both branch.
+                self.init_vars = BTreeSet::intersection(&then_init_vars, &&otherwise_init_vars)
+                    .copied()
+                    .collect();
+            }
+
+            fn visit_while_stmt(&mut self, stmt: &WhileStmt) {
+                // any variables declared inside the while loop is "possibly uninitialized", because
+                // the loop body is not necessarily run.
+                let init_vars = self.init_vars.clone();
+                self.visit_bool_expr(&stmt.cond);
+                self.visit_stmt(&stmt.body);
+                self.init_vars = init_vars;
             }
 
             fn visit_assg_stmt(&mut self, stmt: &AssgStmt) {
