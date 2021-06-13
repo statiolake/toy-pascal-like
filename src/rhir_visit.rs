@@ -106,7 +106,6 @@ pub fn visit_fndecl<V: Visit + ?Sized>(v: &mut V, fndecl: &FnDecl) {
 }
 
 pub fn visit_param<V: Visit + ?Sized>(v: &mut V, param: &Param) {
-    v.visit_ident(&param.name);
     v.visit_ty(&param.ty);
 }
 

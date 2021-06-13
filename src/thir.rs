@@ -68,13 +68,14 @@ pub struct FnDecl {
     pub span: Span,
     pub name: Ident,
     pub params: Vec<Param>,
+    pub ret_var: VarId,
     pub ret_ty: Ty,
 }
 
 #[derive(Debug, Clone)]
 pub struct Param {
     pub span: Span,
-    pub name: Ident,
+    pub res: Option<VarId>,
     pub ty: Ty,
 }
 

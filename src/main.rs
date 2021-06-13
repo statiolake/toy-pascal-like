@@ -2,11 +2,13 @@ use itertools::Itertools as _;
 use once_cell::sync::Lazy;
 use pascal_like::builtins;
 use pascal_like::hir::lower_ast;
-use pascal_like::interp::{run, InterpError};
+use pascal_like::interp;
+use pascal_like::interp::InterpError;
 use pascal_like::lexer::tokenize;
 use pascal_like::parser::{parse, ParserError};
 use pascal_like::resolver::{resolve_hir, ResolverError};
 use pascal_like::span::Span;
+use pascal_like::thir_interp;
 use pascal_like::typeck::{check_rhir, TypeckError};
 use std::cmp::min;
 use std::io::prelude::*;
@@ -217,9 +219,10 @@ fn main() {
     println!("{:#?}", thir);
     println!();
 
-    if false {
-        println!("--- run ---");
-        let state = match run(&ast) {
+    let use_ast_runner = false;
+    if use_ast_runner {
+        println!("--- run (AST) ---");
+        let state = match interp::run(&ast) {
             Ok(state) => state,
             Err(err) => {
                 print_interpreter_error(&filename, &source, &err);
@@ -230,5 +233,8 @@ fn main() {
 
         println!("--- final state ---");
         state.display();
+    } else {
+        println!("--- run (THIR) ---");
+        thir_interp::run(&thir);
     }
 }

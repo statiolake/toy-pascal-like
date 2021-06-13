@@ -77,13 +77,16 @@ pub struct FnDecl {
     pub span: Span,
     pub name: Ident,
     pub params: Vec<Param>,
+    pub ret_var: VarId,
     pub ret_ty: Ty,
 }
 
 #[derive(Debug, Clone)]
 pub struct Param {
     pub span: Span,
-    pub name: Ident,
+    // None if this parameter is of buitlin functions: they are just Rust native closures so they
+    // don't have corresponding local variables for parameters.
+    pub res: Option<VarId>,
     pub ty: Ty,
 }
 

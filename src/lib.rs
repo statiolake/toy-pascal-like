@@ -10,6 +10,7 @@ pub mod rhir;
 pub mod rhir_visit;
 pub mod span;
 pub mod thir;
+pub mod thir_interp;
 pub mod typeck;
 
 #[derive(thiserror::Error, Debug)]

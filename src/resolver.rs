@@ -211,34 +211,47 @@ impl Resolver {
                         return;
                     }
                 };
-                if !matches!(
-                    &*scope.var(ret_var_id).ty.res.borrow(),
-                    ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Void))
-                ) {
-                    // only add when the return value is not void
-                    self.visible_vars.insert(ret_var_id);
-                }
+                *fndecl.ret_var.borrow_mut() = ResolveStatus::Resolved(ret_var_id);
+                // Add return variable even if it's void: if void value is specified as a return
+                // value, it should be accepted.
+                self.visible_vars.insert(ret_var_id);
 
-                // find params and make it visible
+                // find params and make it visible ...
                 for param in &fndecl.params {
-                    let param_var_id = match find_var(scope, &param.name) {
-                        Ok(id) => id,
-                        Err(err) => {
-                            self.errors.push(err);
+                    // ... only when this parameter has a name.
+                    if let Some(name) = &param.res {
+                        let ident = match name.borrow().clone() {
+                            ResolveStatus::Unresolved(ident) => ident,
+                            ResolveStatus::Resolved(_) => panic!(
+                                "internal error: parameter should not be resolved at this stage"
+                            ),
+                            ResolveStatus::Err(_) => panic!(
+                                "internal error: parameter should not be error at this stage"
+                            ),
+                        };
+
+                        let param_var_id = match find_var(scope, &ident) {
+                            Ok(id) => id,
+                            Err(err) => {
+                                self.errors.push(err);
+                                return;
+                            }
+                        };
+
+                        if !self.visible_vars.insert(param_var_id) {
+                            // if the specified var_id is already visible: more than one parameters have
+                            // the same name in this fndecl.
+                            self.errors.push(ResolverError {
+                                span: param.span,
+                                kind: ResolverErrorKind::AlreadyDefinedVariable {
+                                    ident: ident.ident,
+                                },
+                            });
                             return;
                         }
-                    };
 
-                    if !self.visible_vars.insert(param_var_id) {
-                        // if the specified var_id is already visible: more than one parameters have
-                        // the same name in this fndecl.
-                        self.errors.push(ResolverError {
-                            span: param.span,
-                            kind: ResolverErrorKind::AlreadyDefinedVariable {
-                                ident: param.name.ident.clone(),
-                            },
-                        });
-                        return;
+                        // resolve this parameter as well
+                        *name.borrow_mut() = ResolveStatus::Resolved(param_var_id);
                     }
                 }
 
@@ -366,10 +379,12 @@ impl Resolver {
                 span,
                 name,
                 params,
+                ret_var,
                 ret_ty,
             } = fndecl;
 
             let params = params.into_iter().map(convert_param).collect_vec();
+            let ret_var = convert_res(ret_var);
             let ret_ty = convert_ty(ret_ty);
 
             rhir::FnDecl {
@@ -378,15 +393,20 @@ impl Resolver {
                 span,
                 name,
                 params,
+                ret_var,
                 ret_ty,
             }
         }
 
         fn convert_param(param: Param) -> rhir::Param {
-            let Param { span, name, ty } = param;
+            let Param { span, res, ty } = param;
             let ty = convert_ty(ty);
 
-            rhir::Param { span, name, ty }
+            rhir::Param {
+                span,
+                res: res.map(convert_res),
+                ty,
+            }
         }
 
         fn convert_ty(ty: Ty) -> rhir::Ty {

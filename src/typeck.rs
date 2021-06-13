@@ -319,6 +319,7 @@ impl TypeChecker {
                 span,
                 name,
                 params,
+                ret_var,
                 ret_ty,
             } = fndecl;
 
@@ -331,15 +332,16 @@ impl TypeChecker {
                 span,
                 name,
                 params,
+                ret_var,
                 ret_ty,
             }
         }
 
         fn convert_param(param: Param) -> thir::Param {
-            let Param { span, name, ty } = param;
+            let Param { span, res, ty } = param;
             let ty = convert_ty(ty);
 
-            thir::Param { span, name, ty }
+            thir::Param { span, res, ty }
         }
 
         fn convert_ty(ty: Ty) -> thir::Ty {

@@ -46,9 +46,11 @@ macro_rules! unwrap_param {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! wrap_ret {
-    ($ret:expr, void) => {
+    ($ret:expr, void) => {{
+        // to check type
+        let _: () = $ret;
         $crate::hir::Value::Void
-    };
+    }};
     ($ret:expr, int) => {
         $crate::hir::Value::Int($ret)
     };

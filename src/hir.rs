@@ -193,13 +193,17 @@ pub struct FnDecl {
     pub span: Span,
     pub name: Ident,
     pub params: Vec<Param>,
+    pub ret_var: RefCell<ResolveStatus<VarId>>,
     pub ret_ty: Ty,
 }
 
 #[derive(Debug, Clone)]
 pub struct Param {
     pub span: Span,
-    pub name: Ident,
+    // `name` is Option since builtin functions doesn't have parameter names. Their parameters
+    // cannot be found as our interpreter's local variable table, since that's completely native
+    // Rust closure arguments.
+    pub res: Option<RefCell<ResolveStatus<VarId>>>,
     pub ty: Ty,
 }
 
@@ -403,11 +407,22 @@ pub struct Const {
     pub value: Value,
 }
 
-#[derive(Debug)]
+// FIXME: we shouldn't require Clone...
+#[derive(Debug, Clone)]
 pub enum Value {
     Void,
     Int(i64),
     Float(f64),
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Value::Void => write!(b, "(void)"),
+            Value::Int(v) => write!(b, "{} (int)", v),
+            Value::Float(v) => write!(b, "{} (float)", v),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -461,12 +476,9 @@ impl LoweringContext {
             };
             let params = params
                 .into_iter()
-                .map(|(name, ty_kind)| Param {
+                .map(|(_, ty_kind)| Param {
                     span: Span::new_zero(),
-                    name: Ident {
-                        span: Span::new_zero(),
-                        ident: name,
-                    },
+                    res: None,
                     ty: Ty {
                         span: Span::new_zero(),
                         res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(ty_kind))),
@@ -523,6 +535,7 @@ impl LoweringContext {
             span,
             name: name.clone(),
             params: params.clone(),
+            ret_var: RefCell::new(ResolveStatus::Unresolved(name.clone())),
             ret_ty: ret_ty.clone(),
         };
 
@@ -544,7 +557,15 @@ impl LoweringContext {
 
         // parameters
         for param in params {
-            self.try_register_var(new_scope_id, param.name, param.ty);
+            // Register parameters only when they have a name; i.e. except builtin functions written
+            // in native Rust closure.
+            if let Some(name) = param.res {
+                if let ResolveStatus::Unresolved(name) = name.borrow().clone() {
+                    self.try_register_var(new_scope_id, name, param.ty);
+                } else {
+                    panic!("internal error: parameters should not be resolved at this stage");
+                }
+            }
         }
 
         (new_fn_id, new_scope_id)
@@ -610,7 +631,9 @@ impl LoweringContext {
         {
             params.push(Param {
                 span: *span,
-                name: self.lower_ident(fn_id, scope_id, ident),
+                res: Some(RefCell::new(ResolveStatus::Unresolved(
+                    self.lower_ident(fn_id, scope_id, ident),
+                ))),
                 ty: self.lower_ty(fn_id, scope_id, ty),
             });
             curr_param = &next;
