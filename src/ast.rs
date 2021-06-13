@@ -97,7 +97,7 @@ impl AstFuncdefStmt {
 
 #[derive(Debug)]
 pub struct AstIfStmt {
-    pub cond: Box<Ast<AstBoolExpr>>,
+    pub cond: Box<Ast<AstArithExpr>>,
     pub then: Box<Ast<AstStmt>>,
     pub otherwise: Box<Ast<AstStmt>>,
 }
@@ -105,7 +105,7 @@ pub struct AstIfStmt {
 impl AstIfStmt {
     pub fn from_elements(
         span: Span,
-        cond: Ast<AstBoolExpr>,
+        cond: Ast<AstArithExpr>,
         then: Ast<AstStmt>,
         otherwise: Ast<AstStmt>,
     ) -> Ast<AstIfStmt> {
@@ -120,14 +120,14 @@ impl AstIfStmt {
 
 #[derive(Debug)]
 pub struct AstWhileStmt {
-    pub cond: Box<Ast<AstBoolExpr>>,
+    pub cond: Box<Ast<AstArithExpr>>,
     pub body: Box<Ast<AstStmt>>,
 }
 
 impl AstWhileStmt {
     pub fn from_elements(
         span: Span,
-        cond: Ast<AstBoolExpr>,
+        cond: Ast<AstArithExpr>,
         body: Ast<AstStmt>,
     ) -> Ast<AstWhileStmt> {
         let ast = AstWhileStmt {
@@ -228,29 +228,6 @@ impl AstDumpStmt {
 }
 
 #[derive(Debug)]
-pub struct AstBoolExpr {
-    pub lhs: Box<Ast<AstArithExpr>>,
-    pub op: Box<Ast<AstCompareOp>>,
-    pub rhs: Box<Ast<AstArithExpr>>,
-}
-
-impl AstBoolExpr {
-    pub fn from_elements(
-        span: Span,
-        lhs: Ast<AstArithExpr>,
-        op: Ast<AstCompareOp>,
-        rhs: Ast<AstArithExpr>,
-    ) -> Ast<AstBoolExpr> {
-        let ast = AstBoolExpr {
-            lhs: Box::new(lhs),
-            op: Box::new(op),
-            rhs: Box::new(rhs),
-        };
-        Ast { span, ast }
-    }
-}
-
-#[derive(Debug)]
 pub enum AstCompareOp {
     Lt,
     Gt,
@@ -275,33 +252,59 @@ impl AstCompareOp {
 
 #[derive(Debug)]
 pub enum AstArithExpr {
-    MulExpr(Box<Ast<AstMulExpr>>),
-    Add(Box<Ast<AstArithExpr>>, Box<Ast<AstMulExpr>>),
-    Sub(Box<Ast<AstArithExpr>>, Box<Ast<AstMulExpr>>),
+    AddExpr(Box<Ast<AstAddExpr>>),
+    CompareExpr(
+        Ast<AstCompareOp>,
+        Box<Ast<AstArithExpr>>,
+        Box<Ast<AstAddExpr>>,
+    ),
 }
 
-derive_from_for_tuple_like!(AstMulExpr => AstArithExpr::MulExpr, from_mul);
+derive_from_for_tuple_like!(AstAddExpr => AstArithExpr::AddExpr, from_add);
 
 impl AstArithExpr {
-    pub fn add_from_elements(
+    pub fn compare_from_elements(
         span: Span,
+        op: Ast<AstCompareOp>,
         lhs: Ast<AstArithExpr>,
-        rhs: Ast<AstMulExpr>,
+        rhs: Ast<AstAddExpr>,
     ) -> Ast<AstArithExpr> {
         Ast {
             span,
-            ast: AstArithExpr::Add(Box::new(lhs), Box::new(rhs)),
+            ast: AstArithExpr::CompareExpr(op, Box::new(lhs), Box::new(rhs)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum AstAddExpr {
+    MulExpr(Box<Ast<AstMulExpr>>),
+    Add(Box<Ast<AstAddExpr>>, Box<Ast<AstMulExpr>>),
+    Sub(Box<Ast<AstAddExpr>>, Box<Ast<AstMulExpr>>),
+}
+
+derive_from_for_tuple_like!(AstMulExpr => AstAddExpr::MulExpr, from_mul);
+
+impl AstAddExpr {
+    pub fn add_from_elements(
+        span: Span,
+        lhs: Ast<AstAddExpr>,
+        rhs: Ast<AstMulExpr>,
+    ) -> Ast<AstAddExpr> {
+        Ast {
+            span,
+            ast: AstAddExpr::Add(Box::new(lhs), Box::new(rhs)),
         }
     }
 
     pub fn sub_from_elements(
         span: Span,
-        lhs: Ast<AstArithExpr>,
+        lhs: Ast<AstAddExpr>,
         rhs: Ast<AstMulExpr>,
-    ) -> Ast<AstArithExpr> {
+    ) -> Ast<AstAddExpr> {
         Ast {
             span,
-            ast: AstArithExpr::Sub(Box::new(lhs), Box::new(rhs)),
+            ast: AstAddExpr::Sub(Box::new(lhs), Box::new(rhs)),
         }
     }
 }

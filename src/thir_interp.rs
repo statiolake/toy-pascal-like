@@ -1,4 +1,4 @@
-use crate::hir::{CompareOpKind, FnId, ScopeId, TyKind, Value, VarId};
+use crate::hir::*;
 use crate::thir::*;
 use itertools::izip;
 use itertools::Itertools as _;
@@ -12,11 +12,9 @@ pub fn run(program: &ThirProgram) -> BTreeMap<String, Value> {
     state
         .vars
         .iter()
-        .map(|(var_id, value)| {
-            (
-                scope.vars[var_id].name.ident.clone(),
-                value.clone().unwrap(),
-            )
+        .filter_map(|(var_id, value)| {
+            let name = scope.vars[var_id].name.ident.clone();
+            value.clone().map(|value| (name, value))
         })
         .collect()
 }
@@ -49,21 +47,32 @@ impl<'thir> State<'thir> {
 }
 
 macro_rules! apply_op {
-    ($op:tt, $expr:expr) => {
+    (unary $op:tt, $expr:expr) => {
         match ($expr) {
             Value::Int(expr) => Value::Int($op expr),
             Value::Float(expr) => Value::Float($op expr),
             _ => unreachable!(),
         }
     };
-    (bool $op:tt, $lhs:expr, $rhs:expr) => {
+    (compare $op:tt, $lhs:expr, $rhs:expr) => {
+        #[allow(clippy::float_cmp)]
         match ($lhs, $rhs) {
-            (Value::Int(l), Value::Int(r)) => l $op r,
-            (Value::Float(l), Value::Float(r)) => l $op r,
+            (Value::Int(l), Value::Int(r)) => Value::Bool(l $op r),
+            (Value::Float(l), Value::Float(r)) => Value::Bool(l $op r),
             _ => unreachable!(),
         }
     };
-    ($op:tt, $lhs:expr, $rhs:expr) => {
+    (equal $op:tt, $lhs:expr, $rhs:expr) => {
+        #[allow(clippy::float_cmp)]
+        match ($lhs, $rhs) {
+            (Value::Void, Value::Void) => Value::Bool(() $op ()),
+            (Value::Int(l), Value::Int(r)) => Value::Bool(l $op r),
+            (Value::Float(l), Value::Float(r)) => Value::Bool(l $op r),
+            (Value::Bool(l), Value::Bool(r)) => Value::Bool(l $op r),
+            _ => unreachable!(),
+        }
+    };
+    (arith $op:tt, $lhs:expr, $rhs:expr) => {
         match ($lhs, $rhs) {
             (Value::Int(l), Value::Int(r)) => Value::Int(l $op r),
             (Value::Float(l), Value::Float(r)) => Value::Float(l $op r),
@@ -113,7 +122,7 @@ impl State<'_> {
     }
 
     fn run_if_stmt(&mut self, stmt: &ThirIfStmt) {
-        if self.eval_bool_expr(&*stmt.cond) {
+        if self.eval_arith_expr(&*stmt.cond).unwrap_bool() {
             self.run_stmt(&*stmt.then);
         } else {
             self.run_stmt(&*stmt.otherwise);
@@ -121,7 +130,7 @@ impl State<'_> {
     }
 
     fn run_while_stmt(&mut self, stmt: &ThirWhileStmt) {
-        while self.eval_bool_expr(&*stmt.cond) {
+        while self.eval_arith_expr(&*stmt.cond).unwrap_bool() {
             self.run_stmt(&*stmt.body);
         }
     }
@@ -143,39 +152,42 @@ impl State<'_> {
         println!("{} = {}", var.name.ident, value.as_ref().unwrap());
     }
 
-    fn eval_bool_expr(&self, stmt: &ThirBoolExpr) -> bool {
-        let lhs = self.eval_arith_expr(&*stmt.lhs);
-        let rhs = self.eval_arith_expr(&*stmt.rhs);
-        match &stmt.op.kind {
-            CompareOpKind::Lt => apply_op!(bool <, lhs, rhs),
-            CompareOpKind::Gt => apply_op!(bool >, lhs, rhs),
-            CompareOpKind::Le => apply_op!(bool <=, lhs, rhs),
-            CompareOpKind::Ge => apply_op!(bool >=, lhs, rhs),
-            #[allow(clippy::float_cmp)]
-            CompareOpKind::Eq => apply_op!(bool ==, lhs, rhs),
-            #[allow(clippy::float_cmp)]
-            CompareOpKind::Ne => apply_op!(bool !=, lhs, rhs),
-        }
-    }
-
     fn eval_arith_expr(&self, stmt: &ThirArithExpr) -> Value {
         match &stmt.kind {
             ThirArithExprKind::Primary(e) => self.eval_primary_expr(e),
             ThirArithExprKind::UnaryOp(op, e) => match op {
-                crate::hir::UnaryOp::Neg => apply_op!(-, self.eval_arith_expr(e)),
+                UnaryOp::Neg => apply_op!(unary -, self.eval_arith_expr(e)),
             },
             ThirArithExprKind::BinOp(op, l, r) => match op {
-                crate::hir::BinOp::Add => {
-                    apply_op!(+, self.eval_arith_expr(l), self.eval_arith_expr(r))
+                BinOp::Add => {
+                    apply_op!(arith+, self.eval_arith_expr(l), self.eval_arith_expr(r))
                 }
-                crate::hir::BinOp::Sub => {
-                    apply_op!(-, self.eval_arith_expr(l), self.eval_arith_expr(r))
+                BinOp::Sub => {
+                    apply_op!(arith -, self.eval_arith_expr(l), self.eval_arith_expr(r))
                 }
-                crate::hir::BinOp::Mul => {
-                    apply_op!(*, self.eval_arith_expr(l), self.eval_arith_expr(r))
+                BinOp::Mul => {
+                    apply_op!(arith *, self.eval_arith_expr(l), self.eval_arith_expr(r))
                 }
-                crate::hir::BinOp::Div => {
-                    apply_op!(/, self.eval_arith_expr(l), self.eval_arith_expr(r))
+                BinOp::Div => {
+                    apply_op!(arith /, self.eval_arith_expr(l), self.eval_arith_expr(r))
+                }
+                BinOp::Lt => {
+                    apply_op!(compare <, self.eval_arith_expr(l), self.eval_arith_expr(r))
+                }
+                BinOp::Gt => {
+                    apply_op!(compare >, self.eval_arith_expr(l), self.eval_arith_expr(r))
+                }
+                BinOp::Le => {
+                    apply_op!(compare <=, self.eval_arith_expr(l), self.eval_arith_expr(r))
+                }
+                BinOp::Ge => {
+                    apply_op!(compare >=, self.eval_arith_expr(l), self.eval_arith_expr(r))
+                }
+                BinOp::Eq => {
+                    apply_op!(equal ==, self.eval_arith_expr(l), self.eval_arith_expr(r))
+                }
+                BinOp::Ne => {
+                    apply_op!(equal !=, self.eval_arith_expr(l), self.eval_arith_expr(r))
                 }
             },
         }

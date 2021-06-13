@@ -1,4 +1,4 @@
-use crate::hir::{FnId, ScopeId, TyKind, TypeckStatus, VarId};
+use crate::hir::*;
 use crate::rhir::*;
 use crate::rhir_visit;
 use crate::rhir_visit::Visit;
@@ -27,6 +27,12 @@ pub enum TypeckErrorKind {
 
     #[error("type mismatch: expected `{expected}` but found `{found}`")]
     TyMismatch { expected: TyKind, found: TyKind },
+
+    #[error("type `{ty}` does not support `{op}`")]
+    UnsupportedBinOp { ty: TyKind, op: BinOp },
+
+    #[error("type `{ty}` does not support `{op}`")]
+    UnsupportedUnaryOp { ty: TyKind, op: UnaryOp },
 }
 
 impl TypeckErrorKind {
@@ -39,6 +45,8 @@ impl TypeckErrorKind {
             TypeckErrorKind::TyMismatch { expected, found } => {
                 format!("expected `{}`, found `{}`", expected, found)
             }
+            TypeckErrorKind::UnsupportedBinOp { .. } => "unsupported binary operation".to_string(),
+            TypeckErrorKind::UnsupportedUnaryOp { .. } => "unsupported unary operation".to_string(),
         }
     }
 }
@@ -93,6 +101,106 @@ impl TypeChecker {
             errors: Vec<TypeckError>,
         }
 
+        fn unary_op_ret_ty(op: UnaryOp, span_operand: Span, operand: &TyKind) -> Result<TyKind> {
+            match op {
+                UnaryOp::Neg => {
+                    if operand.is_numeric() {
+                        Ok(operand.clone())
+                    } else {
+                        Err(TypeckError {
+                            span: span_operand,
+                            kind: TypeckErrorKind::UnsupportedUnaryOp {
+                                ty: operand.clone(),
+                                op,
+                            },
+                        })
+                    }
+                }
+            }
+        }
+
+        fn bin_op_ret_ty(
+            op: BinOp,
+            span_expr: Span,
+            span_rhs: Span,
+            lhs: &TyKind,
+            rhs: &TyKind,
+        ) -> Result<TyKind> {
+            if op.is_arith() {
+                return if lhs == rhs {
+                    if lhs.is_numeric() {
+                        Ok(lhs.clone())
+                    } else {
+                        Err(TypeckError {
+                            span: span_expr,
+                            kind: TypeckErrorKind::UnsupportedBinOp {
+                                ty: lhs.clone(),
+                                op,
+                            },
+                        })
+                    }
+                } else {
+                    Err(TypeckError {
+                        span: span_rhs,
+                        kind: TypeckErrorKind::TyMismatch {
+                            expected: lhs.clone(),
+                            found: rhs.clone(),
+                        },
+                    })
+                };
+            }
+
+            if op.is_compare() {
+                return if lhs == rhs {
+                    if lhs.is_comparable() {
+                        Ok(TyKind::Bool)
+                    } else {
+                        Err(TypeckError {
+                            span: span_expr,
+                            kind: TypeckErrorKind::UnsupportedBinOp {
+                                ty: lhs.clone(),
+                                op,
+                            },
+                        })
+                    }
+                } else {
+                    Err(TypeckError {
+                        span: span_rhs,
+                        kind: TypeckErrorKind::TyMismatch {
+                            expected: lhs.clone(),
+                            found: rhs.clone(),
+                        },
+                    })
+                };
+            }
+
+            if op.is_equal() {
+                return if lhs == rhs {
+                    if lhs.is_equatable() {
+                        Ok(TyKind::Bool)
+                    } else {
+                        Err(TypeckError {
+                            span: span_expr,
+                            kind: TypeckErrorKind::UnsupportedBinOp {
+                                ty: lhs.clone(),
+                                op,
+                            },
+                        })
+                    }
+                } else {
+                    Err(TypeckError {
+                        span: span_rhs,
+                        kind: TypeckErrorKind::TyMismatch {
+                            expected: lhs.clone(),
+                            found: rhs.clone(),
+                        },
+                    })
+                };
+            }
+
+            unreachable!("operator must be one of arith, compare, or equal")
+        }
+
         impl Visit for VisitorContext<'_> {
             fn visit_fnbody(&mut self, fnbody: &RhirFnBody) {
                 // set the scope id to the current function
@@ -143,10 +251,22 @@ impl TypeChecker {
                     RhirArithExprKind::Primary(e) => {
                         *expr.ty.res.borrow_mut() = e.ty.res.borrow().clone();
                     }
-                    RhirArithExprKind::UnaryOp(_, e) => {
-                        *expr.ty.res.borrow_mut() = e.ty.res.borrow().clone();
+                    RhirArithExprKind::UnaryOp(op, e) => {
+                        let ty = match e.ty.res.borrow().clone() {
+                            TypeckStatus::Infer => panic_not_inferred!(),
+                            TypeckStatus::Revealed(ty) => ty,
+                            TypeckStatus::Err => return,
+                        };
+                        let ret_ty = match unary_op_ret_ty(*op, e.span, &ty) {
+                            Ok(ty) => ty,
+                            Err(err) => {
+                                self.errors.push(err);
+                                return;
+                            }
+                        };
+                        *expr.ty.res.borrow_mut() = TypeckStatus::Revealed(ret_ty);
                     }
-                    RhirArithExprKind::BinOp(_, l, r) => {
+                    RhirArithExprKind::BinOp(op, l, r) => {
                         let lt = match l.ty.res.borrow().clone() {
                             TypeckStatus::Infer => panic_not_inferred!(),
                             TypeckStatus::Revealed(ty) => ty,
@@ -158,17 +278,14 @@ impl TypeChecker {
                             TypeckStatus::Err => return,
                         };
 
-                        if lt != rt {
-                            self.errors.push(TypeckError {
-                                span: r.span,
-                                kind: TypeckErrorKind::TyMismatch {
-                                    expected: lt,
-                                    found: rt,
-                                },
-                            });
-                            return;
-                        }
-                        *expr.ty.res.borrow_mut() = TypeckStatus::Revealed(lt);
+                        let ret_ty = match bin_op_ret_ty(*op, expr.span, r.span, &lt, &rt) {
+                            Ok(ty) => ty,
+                            Err(err) => {
+                                self.errors.push(err);
+                                return;
+                            }
+                        };
+                        *expr.ty.res.borrow_mut() = TypeckStatus::Revealed(ret_ty);
                     }
                 }
             }
@@ -407,7 +524,7 @@ impl TypeChecker {
                 otherwise,
             } = stmt;
 
-            let cond = Box::new(convert_bool_expr(*cond));
+            let cond = Box::new(convert_arith_expr(*cond));
             let then = Box::new(convert_stmt(*then));
             let otherwise = Box::new(convert_stmt(*otherwise));
 
@@ -428,7 +545,7 @@ impl TypeChecker {
 
         fn convert_while_stmt(stmt: RhirWhileStmt) -> thir::ThirWhileStmt {
             let RhirWhileStmt { span, cond, body } = stmt;
-            let cond = Box::new(convert_bool_expr(*cond));
+            let cond = Box::new(convert_arith_expr(*cond));
             let body = Box::new(convert_stmt(*body));
 
             thir::ThirWhileStmt { span, cond, body }
@@ -447,14 +564,6 @@ impl TypeChecker {
             let var = Box::new(convert_var_ref(*var));
 
             thir::ThirDumpStmt { span, var }
-        }
-
-        fn convert_bool_expr(expr: RhirBoolExpr) -> thir::ThirBoolExpr {
-            let RhirBoolExpr { span, op, lhs, rhs } = expr;
-            let lhs = Box::new(convert_arith_expr(*lhs));
-            let rhs = Box::new(convert_arith_expr(*rhs));
-
-            thir::ThirBoolExpr { span, op, lhs, rhs }
         }
 
         fn convert_arith_expr(expr: RhirArithExpr) -> thir::ThirArithExpr {

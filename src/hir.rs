@@ -193,6 +193,7 @@ pub enum TyKind {
     Void,
     Int,
     Float,
+    Bool,
 }
 
 impl fmt::Display for TyKind {
@@ -201,7 +202,22 @@ impl fmt::Display for TyKind {
             TyKind::Void => write!(b, "void"),
             TyKind::Int => write!(b, "int"),
             TyKind::Float => write!(b, "float"),
+            TyKind::Bool => write!(b, "bool"),
         }
+    }
+}
+
+impl TyKind {
+    pub fn is_numeric(&self) -> bool {
+        matches!(self, TyKind::Int | TyKind::Float)
+    }
+
+    pub fn is_comparable(&self) -> bool {
+        matches!(self, TyKind::Int | TyKind::Float)
+    }
+
+    pub fn is_equatable(&self) -> bool {
+        true
     }
 }
 
@@ -254,7 +270,7 @@ pub enum HirStmtKind {
 #[derive(Debug)]
 pub struct HirIfStmt {
     pub span: Span,
-    pub cond: Box<HirBoolExpr>,
+    pub cond: Box<HirArithExpr>,
     pub then: Box<HirStmt>,
     pub otherwise: Box<HirStmt>,
 }
@@ -262,7 +278,7 @@ pub struct HirIfStmt {
 #[derive(Debug)]
 pub struct HirWhileStmt {
     pub span: Span,
-    pub cond: Box<HirBoolExpr>,
+    pub cond: Box<HirArithExpr>,
     pub body: Box<HirStmt>,
 }
 
@@ -286,30 +302,6 @@ pub struct HirDumpStmt {
 }
 
 #[derive(Debug)]
-pub struct HirBoolExpr {
-    pub span: Span,
-    pub op: Box<CompareOp>,
-    pub lhs: Box<HirArithExpr>,
-    pub rhs: Box<HirArithExpr>,
-}
-
-#[derive(Debug)]
-pub struct CompareOp {
-    pub span: Span,
-    pub kind: CompareOpKind,
-}
-
-#[derive(Debug)]
-pub enum CompareOpKind {
-    Lt,
-    Gt,
-    Le,
-    Ge,
-    Eq,
-    Ne,
-}
-
-#[derive(Debug)]
 pub struct HirArithExpr {
     pub span: Span,
     pub ty: HirTy,
@@ -323,17 +315,62 @@ pub enum HirArithExprKind {
     BinOp(BinOp, Box<HirArithExpr>, Box<HirArithExpr>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Neg,
 }
 
-#[derive(Debug)]
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UnaryOp::Neg => write!(b, "-"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinOp {
     Add,
     Sub,
     Mul,
     Div,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    Eq,
+    Ne,
+}
+
+impl BinOp {
+    pub fn is_arith(&self) -> bool {
+        matches!(self, BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div)
+    }
+
+    pub fn is_compare(&self) -> bool {
+        matches!(self, BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge)
+    }
+
+    pub fn is_equal(&self) -> bool {
+        matches!(self, BinOp::Eq | BinOp::Ne)
+    }
+}
+
+impl fmt::Display for BinOp {
+    fn fmt(&self, b: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BinOp::Add => write!(b, "+"),
+            BinOp::Sub => write!(b, "-"),
+            BinOp::Mul => write!(b, "*"),
+            BinOp::Div => write!(b, "/"),
+            BinOp::Lt => write!(b, "<"),
+            BinOp::Gt => write!(b, ">"),
+            BinOp::Le => write!(b, "<="),
+            BinOp::Ge => write!(b, ">="),
+            BinOp::Eq => write!(b, "=="),
+            BinOp::Ne => write!(b, "!="),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -370,6 +407,7 @@ pub enum Value {
     Void,
     Int(i64),
     Float(f64),
+    Bool(bool),
 }
 
 impl fmt::Display for Value {
@@ -378,6 +416,7 @@ impl fmt::Display for Value {
             Value::Void => write!(b, "(void)"),
             Value::Int(v) => write!(b, "{} (int)", v),
             Value::Float(v) => write!(b, "{} (float)", v),
+            Value::Bool(v) => write!(b, "{} (bool)", v),
         }
     }
 }
@@ -401,6 +440,13 @@ impl Value {
         match self {
             Value::Float(v) => *v,
             _ => panic!("unwrap_float() called on a non-float value"),
+        }
+    }
+
+    pub fn unwrap_bool(&self) -> bool {
+        match self {
+            Value::Bool(v) => *v,
+            _ => panic!("unwrap_bool() called on a non-bool value"),
         }
     }
 }

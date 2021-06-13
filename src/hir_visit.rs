@@ -57,10 +57,6 @@ pub trait Visit {
         visit_dump_stmt(self, stmt);
     }
 
-    fn visit_bool_expr(&mut self, expr: &HirBoolExpr) {
-        visit_bool_expr(self, expr);
-    }
-
     fn visit_arith_expr(&mut self, expr: &HirArithExpr) {
         visit_arith_expr(self, expr);
     }
@@ -143,13 +139,13 @@ pub fn visit_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirStmt) {
 }
 
 pub fn visit_if_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirIfStmt) {
-    v.visit_bool_expr(&stmt.cond);
+    v.visit_arith_expr(&stmt.cond);
     v.visit_stmt(&stmt.then);
     v.visit_stmt(&stmt.otherwise);
 }
 
 pub fn visit_while_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirWhileStmt) {
-    v.visit_bool_expr(&stmt.cond);
+    v.visit_arith_expr(&stmt.cond);
     v.visit_stmt(&stmt.body);
 }
 
@@ -166,11 +162,6 @@ pub fn visit_assg_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirAssgStmt) {
 
 pub fn visit_dump_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirDumpStmt) {
     v.visit_var_ref(&stmt.var);
-}
-
-pub fn visit_bool_expr<V: Visit + ?Sized>(v: &mut V, expr: &HirBoolExpr) {
-    v.visit_arith_expr(&expr.lhs);
-    v.visit_arith_expr(&expr.rhs);
 }
 
 pub fn visit_arith_expr<V: Visit + ?Sized>(v: &mut V, expr: &HirArithExpr) {

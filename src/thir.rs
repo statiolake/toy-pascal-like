@@ -134,7 +134,7 @@ pub enum ThirStmtKind {
 #[derive(Debug)]
 pub struct ThirIfStmt {
     pub span: Span,
-    pub cond: Box<ThirBoolExpr>,
+    pub cond: Box<ThirArithExpr>,
     pub then: Box<ThirStmt>,
     pub otherwise: Box<ThirStmt>,
 }
@@ -142,7 +142,7 @@ pub struct ThirIfStmt {
 #[derive(Debug)]
 pub struct ThirWhileStmt {
     pub span: Span,
-    pub cond: Box<ThirBoolExpr>,
+    pub cond: Box<ThirArithExpr>,
     pub body: Box<ThirStmt>,
 }
 
@@ -163,14 +163,6 @@ pub struct ThirAssgStmt {
 pub struct ThirDumpStmt {
     pub span: Span,
     pub var: Box<ThirVarRef>,
-}
-
-#[derive(Debug)]
-pub struct ThirBoolExpr {
-    pub span: Span,
-    pub op: Box<CompareOp>,
-    pub lhs: Box<ThirArithExpr>,
-    pub rhs: Box<ThirArithExpr>,
 }
 
 #[derive(Debug)]
