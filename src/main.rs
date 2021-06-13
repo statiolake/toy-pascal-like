@@ -1,10 +1,10 @@
 use itertools::Itertools as _;
 use once_cell::sync::Lazy;
 use pascal_like::builtins;
-use pascal_like::hir::lower_ast;
 use pascal_like::interp;
 use pascal_like::interp::InterpError;
 use pascal_like::lexer::tokenize;
+use pascal_like::lowerer::lower_ast;
 use pascal_like::parser::{parse, ParserError};
 use pascal_like::resolver::{resolve_hir, ResolverError};
 use pascal_like::span::Span;

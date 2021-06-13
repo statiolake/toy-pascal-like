@@ -1,17 +1,29 @@
+pub mod span;
+
+pub mod lexer;
+
+pub mod parser;
+
 pub mod ast;
-pub mod builtins;
+
+pub mod lowerer;
+
 pub mod hir;
 pub mod hir_visit;
-pub mod interp;
-pub mod lexer;
-pub mod parser;
+
 pub mod resolver;
+
 pub mod rhir;
 pub mod rhir_visit;
-pub mod span;
-pub mod thir;
-pub mod thir_interp;
+
 pub mod typeck;
+
+pub mod thir;
+
+pub mod builtins;
+
+pub mod interp;
+pub mod thir_interp;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error<'a> {
