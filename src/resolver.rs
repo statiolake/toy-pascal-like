@@ -237,7 +237,7 @@ impl Resolver {
                 let scope_id = fnbody.inner_scope_id;
                 let scope = self.prog.scope(scope_id);
 
-                // params and return variable should be registered to the local vars table.
+                // params should be registered to the local vars table.
                 let fndecl = self.prog.fndecl(fnbody.id);
 
                 // return variable: it is added only when the return type is not void
@@ -249,9 +249,15 @@ impl Resolver {
                     }
                 };
                 *fndecl.ret_var.borrow_mut() = ResolveStatus::Resolved(ret_var_id);
-                // Add return variable even if it's void: if void value is specified as a return
-                // value, it should be accepted.
-                init_vars.insert(ret_var_id);
+
+                // Add return value only when the return type is void: void function can omit the
+                // assignment to the return variable. Otherwise, you must explicitly specify the
+                // return value.
+                if let ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Void)) =
+                    &*fndecl.ret_ty.res.borrow()
+                {
+                    init_vars.insert(ret_var_id);
+                }
 
                 // find params and make it visible ...
                 for param in &fndecl.params {
@@ -302,16 +308,24 @@ impl Resolver {
                 };
                 fnbody_visitor.visit_fnbody(&fnbody);
 
-                // check return value is initialized
-                if !fnbody_visitor.init_vars.contains(&ret_var_id) {
-                    self.errors.push(ResolverError {
-                        span: fndecl.span,
-                        kind: if fnbody_visitor.once_init_vars.contains(&ret_var_id) {
-                            ResolverErrorKind::PossiblyRetVarUninit
-                        } else {
-                            ResolverErrorKind::RetVarUninit
-                        },
-                    });
+                // check return value is initialized (only when the body kind is Stmt, Builtins are
+                // completely different).
+                match &fnbody.kind {
+                    FnBodyKind::Stmt(_) => {
+                        if !fnbody_visitor.init_vars.contains(&ret_var_id) {
+                            self.errors.push(ResolverError {
+                                span: fndecl.name.span,
+                                kind: if fnbody_visitor.once_init_vars.contains(&ret_var_id) {
+                                    ResolverErrorKind::PossiblyRetVarUninit
+                                } else {
+                                    ResolverErrorKind::RetVarUninit
+                                },
+                            });
+                        }
+                    }
+                    FnBodyKind::Builtin(_) => {
+                        // No need to check. Builtins must work collectly.
+                    }
                 }
 
                 self.errors.extend(fnbody_visitor.errors);
@@ -332,12 +346,13 @@ impl Resolver {
                 // if stmt may create "possibly uninitialized variables".
                 let init_vars = self.init_vars.clone();
                 self.visit_stmt(&stmt.then);
+                // restore the original init_vars for else part
                 let then_init_vars = replace(&mut self.init_vars, init_vars);
                 self.visit_stmt(&stmt.otherwise);
                 let otherwise_init_vars = self.init_vars.clone();
 
                 // init_vars are initialized variables on both branch.
-                self.init_vars = BTreeSet::intersection(&then_init_vars, &&otherwise_init_vars)
+                self.init_vars = BTreeSet::intersection(&then_init_vars, &otherwise_init_vars)
                     .copied()
                     .collect();
             }
