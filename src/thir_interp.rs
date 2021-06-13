@@ -4,9 +4,21 @@ use itertools::izip;
 use itertools::Itertools as _;
 use std::collections::BTreeMap;
 
-pub fn run(program: &ThirProgram) {
+pub fn run(program: &ThirProgram) -> BTreeMap<String, Value> {
     let mut state = State::prepare_start(program);
     state.run();
+
+    let scope = program.scope(state.scope_id);
+    state
+        .vars
+        .iter()
+        .map(|(var_id, value)| {
+            (
+                scope.vars[var_id].name.ident.clone(),
+                value.clone().unwrap(),
+            )
+        })
+        .collect()
 }
 
 pub struct State<'thir> {

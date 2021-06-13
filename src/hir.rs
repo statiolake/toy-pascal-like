@@ -382,6 +382,29 @@ impl fmt::Display for Value {
     }
 }
 
+impl Value {
+    pub fn unwrap_void(&self) {
+        match self {
+            Value::Void => (),
+            _ => panic!("unwrap_void() called on a non-void value"),
+        }
+    }
+
+    pub fn unwrap_int(&self) -> i64 {
+        match self {
+            Value::Int(v) => *v,
+            _ => panic!("unwrap_int() called on a non-int value"),
+        }
+    }
+
+    pub fn unwrap_float(&self) -> f64 {
+        match self {
+            Value::Float(v) => *v,
+            _ => panic!("unwrap_float() called on a non-float value"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct HirFnCall {
     pub span: Span,
