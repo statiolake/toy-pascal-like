@@ -18,6 +18,8 @@ pub enum Error<'i> {
     TypeckError(typeck::TypeckError),
 }
 
+pub type Result<'i, T, E = Error<'i>> = std::result::Result<T, E>;
+
 impl<'i> From<typeck::TypeckError> for Error<'i> {
     fn from(v: typeck::TypeckError) -> Self {
         Self::TypeckError(v)
