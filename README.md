@@ -8,15 +8,54 @@ The interpreter is written in [Rust](https://www.rust-lang.org/ja), so you need 
 
 After installing, you can run the interpreter by running `cargo run {source-file-path}` in a console. `cargo` automatically builds the interpreter before running the executable, so you don't have to build it manually.
 
-For example, you can run `fib.pas` located at the root directly in this way:
+For example, you can run `fib.pas` located under `tests/compile-pass` directory:
 
 ```
-$ cargo run fib.pas
+$ cargo run tests/compile-pass/fib.pas
 ```
+
+All of working examples are under `tests/compile-pass`.
+
+# Quick Overview
+
+This interpreter is running a program by the following sequence:
+
+1. Split source code into tokens
+1. Convert sequence of tokens into syntax tree structure, called AST.
+1. Convert AST into somewhat easier tree structure, called HIR (stands for *High-Level Intermediate Representation* --- although I borrowed this naming from Rust language, but it's used in actually a bit different meaning in this project).
+
+    For example, an arithmetic expression has the following structure in AST:
+    ```
+    AstArithExpr -> AstAddExpr -> AstMulExpr -> AstPrimaryExpr
+    ```
+    But distinction of ArithExpr, AddExpr and MulExpr is no longer needed, as operator precedence is explicit in the tree structure. Therefore, in HIR:
+    ```
+    HirArithExpr -> HirPrimaryExpr
+    ```
+
+    Another example is the list structures. AST has explicit linked list structure, for example:
+    ```
+    Nonempty { curr: _, next: Nonempty { curr: _, next: Empty } }
+    ```
+    This is however bothersome to deal with the list in practice. So, in HIR, we have simple array structure (`Vec<_>`) for those kind of information.
+
+1. Convert HIR into name-resolved HIR, called RHIR.
+
+    We resolve all names of types, functions and variables based on HIR, then converts it to the RHIR. So if you succeeded to create RHIR then you won't encounter unknown type names, undeclared functions and undeclared variables. Note that here type name resolution means resolving the type of directly written in the source code, such as function parameter's type or return type. Each expression's actual type are not inferred here. That's the next work we should do.
+
+1. Convert RHIR into typed HIR, called THIR.
+
+    We infer all types of each variables and expressions. At the same time, we check the types of each expressions are correct. For example, passing `int` value to the `float` variables, adding `float` value to the `int` value, comparing `int` value and `float` value, etc. is type mismatch error. We detect those mismatch in this stage.
+
+    We also detect possibly uninitialized variables. For example, variables only assigned at inside `while` loop body is perhaps not assigned after the loop, because if the condition is initially `false`, loop body is never executed. We report reading those variables as an error in order to protect runtime error.
+
+1. Run THIR.
+
+    Thanks to the all works above, running THIR is safe in terms of it never cause runtime error.
 
 # Example
 
-The example output for `fib.pas`:
+We show the example output for `tests/compile-pass/fib.pas`. Currently the interpreter dumps all intermediate structures (AST, HIR, RHIR and THIR) for debugging.
 
 ```text
 --- ast ---
