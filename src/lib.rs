@@ -88,7 +88,7 @@ mod tests {
                     Value::Bool(
                         raw["Bool(".len()..raw.len() - ")".len()]
                             .parse()
-                            .expect("failed to parse value as float"),
+                            .expect("failed to parse value as bool"),
                     )
                 } else {
                     panic!("Unknown value: {}", raw)
