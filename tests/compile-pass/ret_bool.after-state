@@ -1,0 +1,3 @@
+x = Bool(true)
+y = Bool(false)
+z = Bool(true)

@@ -129,6 +129,10 @@ impl Resolver {
                         *ty.res.borrow_mut() =
                             ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Float))
                     }
+                    "bool" => {
+                        *ty.res.borrow_mut() =
+                            ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Bool))
+                    }
                     _ => {
                         *ty.res.borrow_mut() = ResolveStatus::Err(name.clone());
                         return Err(ResolverError {
