@@ -99,7 +99,7 @@ impl AstFuncdefStmt {
 pub struct AstIfStmt {
     pub cond: Box<Ast<AstArithExpr>>,
     pub then: Box<Ast<AstStmt>>,
-    pub otherwise: Box<Ast<AstStmt>>,
+    pub otherwise: Option<Box<Ast<AstStmt>>>,
 }
 
 impl AstIfStmt {
@@ -107,12 +107,12 @@ impl AstIfStmt {
         span: Span,
         cond: Ast<AstArithExpr>,
         then: Ast<AstStmt>,
-        otherwise: Ast<AstStmt>,
+        otherwise: Option<Ast<AstStmt>>,
     ) -> Ast<AstIfStmt> {
         let ast = AstIfStmt {
             cond: Box::new(cond),
             then: Box::new(then),
-            otherwise: Box::new(otherwise),
+            otherwise: otherwise.map(Box::new),
         };
         Ast { span, ast }
     }

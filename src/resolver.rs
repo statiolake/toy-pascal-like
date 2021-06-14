@@ -348,7 +348,9 @@ impl Resolver {
                 self.visit_stmt(&stmt.then);
                 // restore the original init_vars for else part
                 let then_init_vars = replace(&mut self.init_vars, init_vars);
-                self.visit_stmt(&stmt.otherwise);
+                if let Some(otherwise) = &stmt.otherwise {
+                    self.visit_stmt(otherwise);
+                }
                 let otherwise_init_vars = self.init_vars.clone();
 
                 // init_vars are initialized variables on both branch.
@@ -573,7 +575,7 @@ impl Resolver {
 
             let cond = Box::new(convert_arith_expr(*cond));
             let then = Box::new(convert_stmt(*then));
-            let otherwise = Box::new(convert_stmt(*otherwise));
+            let otherwise = otherwise.map(|otherwise| Box::new(convert_stmt(*otherwise)));
 
             rhir::RhirIfStmt {
                 span,

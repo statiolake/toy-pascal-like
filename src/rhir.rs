@@ -147,7 +147,7 @@ pub struct RhirIfStmt {
     pub span: Span,
     pub cond: Box<RhirArithExpr>,
     pub then: Box<RhirStmt>,
-    pub otherwise: Box<RhirStmt>,
+    pub otherwise: Option<Box<RhirStmt>>,
 }
 
 #[derive(Debug)]

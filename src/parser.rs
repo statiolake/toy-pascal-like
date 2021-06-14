@@ -233,9 +233,14 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         let cond = self.parse_arith_expr()?;
         self.eat(TokenKind::Then)?;
         let then = self.parse_stmt()?;
-        self.eat(TokenKind::Else)?;
-        let otherwise = self.parse_stmt()?;
-        let end = otherwise.span.end;
+        let (otherwise, end) = if self.lookahead(0).map(|t| t.kind).ok() == Some(TokenKind::Else) {
+            self.eat(TokenKind::Else)?;
+            let otherwise = self.parse_stmt()?;
+            let end = otherwise.span.end;
+            (Some(otherwise), end)
+        } else {
+            (None, then.span.end)
+        };
 
         Ok(AstIfStmt::from_elements(
             Span::new(start, end),

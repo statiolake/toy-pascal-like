@@ -124,8 +124,8 @@ impl State<'_> {
     fn run_if_stmt(&mut self, stmt: &ThirIfStmt) {
         if self.eval_arith_expr(&*stmt.cond).unwrap_bool() {
             self.run_stmt(&*stmt.then);
-        } else {
-            self.run_stmt(&*stmt.otherwise);
+        } else if let Some(otherwise) = &stmt.otherwise {
+            self.run_stmt(&**otherwise);
         }
     }
 

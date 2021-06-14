@@ -285,7 +285,11 @@ impl LoweringContext {
             span: stmt.span,
             cond: Box::new(self.lower_arith_expr(fn_id, scope_id, &stmt.ast.cond)),
             then: Box::new(self.lower_stmt(fn_id, scope_id, &stmt.ast.then)),
-            otherwise: Box::new(self.lower_stmt(fn_id, scope_id, &stmt.ast.otherwise)),
+            otherwise: stmt
+                .ast
+                .otherwise
+                .as_ref()
+                .map(|otherwise| Box::new(self.lower_stmt(fn_id, scope_id, otherwise))),
         }
     }
 

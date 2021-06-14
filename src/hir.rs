@@ -272,7 +272,7 @@ pub struct HirIfStmt {
     pub span: Span,
     pub cond: Box<HirArithExpr>,
     pub then: Box<HirStmt>,
-    pub otherwise: Box<HirStmt>,
+    pub otherwise: Option<Box<HirStmt>>,
 }
 
 #[derive(Debug)]

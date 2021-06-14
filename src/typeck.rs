@@ -526,7 +526,7 @@ impl TypeChecker {
 
             let cond = Box::new(convert_arith_expr(*cond));
             let then = Box::new(convert_stmt(*then));
-            let otherwise = Box::new(convert_stmt(*otherwise));
+            let otherwise = otherwise.map(|otherwise| Box::new(convert_stmt(*otherwise)));
 
             thir::ThirIfStmt {
                 span,

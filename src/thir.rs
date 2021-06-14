@@ -136,7 +136,7 @@ pub struct ThirIfStmt {
     pub span: Span,
     pub cond: Box<ThirArithExpr>,
     pub then: Box<ThirStmt>,
-    pub otherwise: Box<ThirStmt>,
+    pub otherwise: Option<Box<ThirStmt>>,
 }
 
 #[derive(Debug)]

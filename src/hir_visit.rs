@@ -141,7 +141,9 @@ pub fn visit_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirStmt) {
 pub fn visit_if_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirIfStmt) {
     v.visit_arith_expr(&stmt.cond);
     v.visit_stmt(&stmt.then);
-    v.visit_stmt(&stmt.otherwise);
+    if let Some(otherwise) = &stmt.otherwise {
+        v.visit_stmt(otherwise);
+    }
 }
 
 pub fn visit_while_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirWhileStmt) {
