@@ -74,13 +74,12 @@ end
         let source = r#"
 begin
     function Fib(n: int): int; begin
-        if n == 0 then
+        if n = 0 then
             Fib := 0
-        else if n == 1 then
+        else if n = 1 then
             Fib := 1
-        else begin
+        else
             Fib := (Fib((n - 1)) + Fib((n - 2)))
-        end
     end;
 
     x := Fib(10);

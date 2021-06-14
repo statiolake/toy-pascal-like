@@ -237,19 +237,6 @@ pub enum AstCompareOp {
     Ne,
 }
 
-impl AstCompareOp {
-    pub fn symbol(&self) -> &'static str {
-        match self {
-            AstCompareOp::Lt => "<",
-            AstCompareOp::Gt => ">",
-            AstCompareOp::Le => "<=",
-            AstCompareOp::Ge => ">=",
-            AstCompareOp::Eq => "==",
-            AstCompareOp::Ne => "!=",
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum AstArithExpr {
     AddExpr(Box<Ast<AstAddExpr>>),
