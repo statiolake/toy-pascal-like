@@ -24,6 +24,8 @@ pub mod builtins;
 
 pub mod thir_interp;
 
+pub mod error;
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
