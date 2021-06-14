@@ -551,6 +551,15 @@ impl LoweringContext {
                 },
                 Value::Float(*v),
             ),
+            AstConst::Bool(v) => (
+                HirTy {
+                    span: cst.span,
+                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(
+                        TyKind::Bool,
+                    ))),
+                },
+                Value::Bool(*v),
+            ),
         };
         HirConst {
             span: cst.span,

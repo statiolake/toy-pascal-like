@@ -507,7 +507,9 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                     expr,
                 ))
             }
-            (_, TokenKind::IntConst(_)) | (_, TokenKind::FloatConst(_)) => {
+            (_, TokenKind::IntConst(_))
+            | (_, TokenKind::FloatConst(_))
+            | (_, TokenKind::BoolConst(_)) => {
                 let value = self.parse_const()?;
                 Ok(AstPrimaryExpr::from_const(value))
             }
@@ -531,6 +533,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                         TokenKind::OpenPar,
                         TokenKind::IntConst(0),
                         TokenKind::FloatConst(0.0),
+                        TokenKind::BoolConst(false),
                         TokenKind::Ident(""),
                     ]),
                 },
@@ -594,11 +597,19 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                 ast: AstConst::Float(value),
                 span: token.span,
             }),
+            (token, TokenKind::BoolConst(value)) => Ok(Ast {
+                ast: AstConst::Bool(value),
+                span: token.span,
+            }),
             (token, _) => Err(ParserError {
                 span: token.span,
                 kind: ParserErrorKind::UnexpectedToken {
                     token_kind: token.kind,
-                    expects: Some(vec![TokenKind::IntConst(0), TokenKind::FloatConst(0.0)]),
+                    expects: Some(vec![
+                        TokenKind::IntConst(0),
+                        TokenKind::FloatConst(0.0),
+                        TokenKind::BoolConst(false),
+                    ]),
                 },
                 hints: vec![],
             }),

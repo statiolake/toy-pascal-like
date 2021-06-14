@@ -43,6 +43,7 @@ pub enum TokenKind<'a> {
     Ident(&'a str),
     IntConst(i64),
     FloatConst(f64),
+    BoolConst(bool),
     Unknown(char),
 }
 
@@ -77,6 +78,7 @@ impl fmt::Display for TokenKind<'_> {
             TokenKind::Ident(ident) => write!(b, "{}", ident),
             TokenKind::IntConst(int) => write!(b, "{}", int),
             TokenKind::FloatConst(float) => write!(b, "{}", float),
+            TokenKind::BoolConst(boolean) => write!(b, "{}", boolean),
             TokenKind::Unknown(unknown) => write!(b, "{}", unknown),
         }
     }
@@ -113,6 +115,7 @@ impl TokenKind<'_> {
             TokenKind::Ident(_) => "{identifier}",
             TokenKind::IntConst(_) => "{integer}",
             TokenKind::FloatConst(_) => "{float}",
+            TokenKind::BoolConst(_) => "{bool}",
             TokenKind::Unknown(_) => "{unknown}",
         }
     }

@@ -142,7 +142,7 @@ impl<'a> Iterator for Splitter<'a> {
             }
         } else if next.is_ascii_alphabetic() {
             // when next char is ascii alphabet: read consecutive alphabets, numbers and underscore
-            // as a identifier
+            // as a identifier. Parhaps it's a boolean constant `true` or `false`.
             let ident = self
                 .rest()
                 .chars()
@@ -150,7 +150,12 @@ impl<'a> Iterator for Splitter<'a> {
                 .collect::<String>();
             let (ident, start, end) = self.eat_str(&ident);
             let span = Span::new(start, end);
-            Token::new(span, TokenKind::Ident(ident))
+            let kind = match ident {
+                "true" => TokenKind::BoolConst(true),
+                "false" => TokenKind::BoolConst(false),
+                _ => TokenKind::Ident(ident),
+            };
+            Token::new(span, kind)
         } else {
             // otherwise, it's unknown char.
             let (_, start, end) = self.eat(next);
