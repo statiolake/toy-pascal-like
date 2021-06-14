@@ -10,7 +10,7 @@ begin
                 else begin end;
             i := i + 1
         end;
-        Pi := 4.0 * float(inside) / float(i)
+        Pi := 4.0 * inttofloat(inside) / inttofloat(i)
     end;
 
     pi := Pi();

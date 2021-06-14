@@ -85,6 +85,7 @@ macro_rules! make_builtin {
         ];
         let ret_ty = $crate::name_to_ty_kind!($ret_ty);
         let clos = |args: ::std::vec::Vec<$crate::hir::Value>| -> $crate::hir::Value {
+            #[allow(unused_mut, unused_variables)]
             let mut args = args.into_iter();
             $(
                 let $param = {
@@ -113,6 +114,7 @@ pub fn populate_builtins() -> Vec<Builtin> {
     let mut builtins = Vec::new();
 
     builtins.extend(populate_casts());
+    builtins.extend(populate_rands());
 
     builtins
 }
@@ -131,4 +133,22 @@ fn populate_casts() -> Vec<Builtin> {
     };
 
     vec![floattoint, inttofloat]
+}
+
+fn populate_rands() -> Vec<Builtin> {
+    use rand::prelude::*;
+
+    let random_int = make_builtin! {
+        fn RandomInt(low: int, high: int) -> int {
+            thread_rng().gen_range(low..high)
+        }
+    };
+
+    let random_float = make_builtin! {
+        fn RandomFloat() -> float {
+            thread_rng().gen()
+        }
+    };
+
+    vec![random_int, random_float]
 }
