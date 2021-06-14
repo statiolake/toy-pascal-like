@@ -1,6 +1,4 @@
 begin
-    min := ReadInt();
-    max := ReadInt();
-    dice := RandomInt(min, max);
+    dice := RandomInt(0, 6) + 1;
     dump dice
 end
