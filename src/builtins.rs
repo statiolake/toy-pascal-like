@@ -118,17 +118,17 @@ pub fn populate_builtins() -> Vec<Builtin> {
 }
 
 fn populate_casts() -> Vec<Builtin> {
-    let ftoi = make_builtin! {
-        fn ftoi(x: float) -> int {
+    let floattoint = make_builtin! {
+        fn floattoint(x: float) -> int {
             x as _
         }
     };
 
-    let itof = make_builtin! {
-        fn itof(x: int) -> float {
+    let inttofloat = make_builtin! {
+        fn inttofloat(x: int) -> float {
             x as _
         }
     };
 
-    vec![ftoi, itof]
+    vec![floattoint, inttofloat]
 }
