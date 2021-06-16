@@ -90,7 +90,7 @@ impl State<'_> {
         let decl = self.prog.fndecl(self.fn_id);
         let body = self.prog.fnbody(self.fn_id);
         match &body.kind {
-            ThirFnBodyKind::Stmt(stmt) => {
+            &ThirFnBodyKind::Stmt(stmt_id) => {
                 // Set args to the local variable
                 for (param, arg) in izip!(&decl.params, args) {
                     if let Some(res) = param.res {
@@ -103,7 +103,8 @@ impl State<'_> {
                     *self.vars.get_mut(&decl.ret_var).unwrap() = Some(Value::Void);
                 }
 
-                self.run_begin_stmt(&*stmt);
+                let stmt = self.prog.stmt(stmt_id);
+                self.run_stmt(stmt);
                 self.vars[&decl.ret_var].as_ref().unwrap().clone()
             }
             ThirFnBodyKind::Builtin(dynfn) => dynfn(args),
@@ -123,20 +124,24 @@ impl State<'_> {
 
     fn run_if_stmt(&mut self, stmt: &ThirIfStmt) {
         if self.eval_arith_expr(&*stmt.cond).unwrap_bool() {
-            self.run_stmt(&*stmt.then);
-        } else if let Some(otherwise) = &stmt.otherwise {
-            self.run_stmt(&**otherwise);
+            let then = self.prog.stmt(stmt.then_id);
+            self.run_stmt(then);
+        } else if let Some(otherwise_id) = stmt.otherwise_id {
+            let otherwise = self.prog.stmt(otherwise_id);
+            self.run_stmt(otherwise);
         }
     }
 
     fn run_while_stmt(&mut self, stmt: &ThirWhileStmt) {
+        let body = self.prog.stmt(stmt.body_id);
         while self.eval_arith_expr(&*stmt.cond).unwrap_bool() {
-            self.run_stmt(&*stmt.body);
+            self.run_stmt(body);
         }
     }
 
     fn run_begin_stmt(&mut self, stmt: &ThirBeginStmt) {
-        for stmt in &stmt.stmts {
+        for &stmt_id in &stmt.stmt_ids {
+            let stmt = self.prog.stmt(stmt_id);
             self.run_stmt(stmt);
         }
     }

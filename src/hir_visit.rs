@@ -5,193 +5,198 @@ pub trait Visit {
         visit_all(self, prog);
     }
 
-    fn visit_scope(&mut self, scope: &HirScope) {
-        visit_scope(self, scope);
+    fn visit_scope(&mut self, prog: &HirProgram, scope: &HirScope) {
+        visit_scope(self, prog, scope);
     }
 
-    fn visit_fndecl(&mut self, fndecl: &HirFnDecl) {
-        visit_fndecl(self, fndecl);
+    fn visit_fndecl(&mut self, prog: &HirProgram, fndecl: &HirFnDecl) {
+        visit_fndecl(self, prog, fndecl);
     }
 
-    fn visit_param(&mut self, param: &HirParam) {
-        visit_param(self, param);
+    fn visit_param(&mut self, prog: &HirProgram, param: &HirParam) {
+        visit_param(self, prog, param);
     }
 
-    fn visit_ident(&mut self, ident: &Ident) {
-        visit_ident(self, ident);
+    fn visit_ident(&mut self, prog: &HirProgram, ident: &Ident) {
+        visit_ident(self, prog, ident);
     }
 
-    fn visit_ty(&mut self, ty: &HirTy) {
-        visit_ty(self, ty);
+    fn visit_ty(&mut self, prog: &HirProgram, ty: &HirTy) {
+        visit_ty(self, prog, ty);
     }
 
-    fn visit_fnbody(&mut self, fnbody: &HirFnBody) {
-        visit_fnbody(self, fnbody);
+    fn visit_fnbody(&mut self, prog: &HirProgram, fnbody: &HirFnBody) {
+        visit_fnbody(self, prog, fnbody);
     }
 
-    fn visit_var(&mut self, var: &HirVar) {
-        visit_var(self, var);
+    fn visit_var(&mut self, prog: &HirProgram, var: &HirVar) {
+        visit_var(self, prog, var);
     }
 
-    fn visit_stmt(&mut self, stmt: &HirStmt) {
-        visit_stmt(self, stmt);
+    fn visit_stmt(&mut self, prog: &HirProgram, stmt: &HirStmt) {
+        visit_stmt(self, prog, stmt);
     }
 
-    fn visit_if_stmt(&mut self, stmt: &HirIfStmt) {
-        visit_if_stmt(self, stmt);
+    fn visit_if_stmt(&mut self, prog: &HirProgram, stmt: &HirIfStmt) {
+        visit_if_stmt(self, prog, stmt);
     }
 
-    fn visit_while_stmt(&mut self, stmt: &HirWhileStmt) {
-        visit_while_stmt(self, stmt);
+    fn visit_while_stmt(&mut self, prog: &HirProgram, stmt: &HirWhileStmt) {
+        visit_while_stmt(self, prog, stmt);
     }
 
-    fn visit_begin_stmt(&mut self, stmt: &HirBeginStmt) {
-        visit_begin_stmt(self, stmt);
+    fn visit_begin_stmt(&mut self, prog: &HirProgram, stmt: &HirBeginStmt) {
+        visit_begin_stmt(self, prog, stmt);
     }
 
-    fn visit_assg_stmt(&mut self, stmt: &HirAssgStmt) {
-        visit_assg_stmt(self, stmt);
+    fn visit_assg_stmt(&mut self, prog: &HirProgram, stmt: &HirAssgStmt) {
+        visit_assg_stmt(self, prog, stmt);
     }
 
-    fn visit_dump_stmt(&mut self, stmt: &HirDumpStmt) {
-        visit_dump_stmt(self, stmt);
+    fn visit_dump_stmt(&mut self, prog: &HirProgram, stmt: &HirDumpStmt) {
+        visit_dump_stmt(self, prog, stmt);
     }
 
-    fn visit_arith_expr(&mut self, expr: &HirArithExpr) {
-        visit_arith_expr(self, expr);
+    fn visit_arith_expr(&mut self, prog: &HirProgram, expr: &HirArithExpr) {
+        visit_arith_expr(self, prog, expr);
     }
 
-    fn visit_primary_expr(&mut self, expr: &HirPrimaryExpr) {
-        visit_primary_expr(self, expr);
+    fn visit_primary_expr(&mut self, prog: &HirProgram, expr: &HirPrimaryExpr) {
+        visit_primary_expr(self, prog, expr);
     }
 
-    fn visit_fncall(&mut self, fncall: &HirFnCall) {
-        visit_fncall(self, fncall);
+    fn visit_fncall(&mut self, prog: &HirProgram, fncall: &HirFnCall) {
+        visit_fncall(self, prog, fncall);
     }
 
-    fn visit_var_ref(&mut self, var: &HirVarRef) {
-        visit_var_ref(self, var);
+    fn visit_var_ref(&mut self, prog: &HirProgram, var: &HirVarRef) {
+        visit_var_ref(self, prog, var);
     }
 
-    fn visit_const(&mut self, cst: &HirConst) {
-        visit_const(self, cst);
+    fn visit_const(&mut self, prog: &HirProgram, cst: &HirConst) {
+        visit_const(self, prog, cst);
     }
 }
 
 pub fn visit_all<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram) {
     for scope in prog.scopes.values() {
-        v.visit_scope(scope);
+        v.visit_scope(prog, scope);
     }
 
     for fndecl in prog.fndecls.values() {
-        v.visit_fndecl(fndecl);
+        v.visit_fndecl(prog, fndecl);
     }
 
     for fnbody in prog.fnbodies.values() {
-        v.visit_fnbody(fnbody);
+        v.visit_fnbody(prog, fnbody);
     }
 }
 
-pub fn visit_fndecl<V: Visit + ?Sized>(v: &mut V, fndecl: &HirFnDecl) {
-    v.visit_ident(&fndecl.name);
+pub fn visit_fndecl<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, fndecl: &HirFnDecl) {
+    v.visit_ident(prog, &fndecl.name);
     for param in &fndecl.params {
-        v.visit_param(param);
+        v.visit_param(prog, param);
     }
-    v.visit_ty(&fndecl.ret_ty);
+    v.visit_ty(prog, &fndecl.ret_ty);
 }
 
-pub fn visit_param<V: Visit + ?Sized>(v: &mut V, param: &HirParam) {
-    v.visit_ty(&param.ty);
+pub fn visit_param<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, param: &HirParam) {
+    v.visit_ty(prog, &param.ty);
 }
 
-pub fn visit_ident<V: Visit + ?Sized>(_v: &mut V, _ident: &Ident) {}
+pub fn visit_ident<V: Visit + ?Sized>(_v: &mut V, _prog: &HirProgram, _ident: &Ident) {}
 
-pub fn visit_ty<V: Visit + ?Sized>(_v: &mut V, _ty: &HirTy) {}
+pub fn visit_ty<V: Visit + ?Sized>(_v: &mut V, _prog: &HirProgram, _ty: &HirTy) {}
 
-pub fn visit_fnbody<V: Visit + ?Sized>(v: &mut V, fnbody: &HirFnBody) {
-    if let HirFnBodyKind::Stmt(stmt) = &fnbody.kind {
-        v.visit_begin_stmt(stmt)
+pub fn visit_fnbody<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, fnbody: &HirFnBody) {
+    if let HirFnBodyKind::Stmt(stmt_id) = fnbody.kind {
+        let stmt = prog.stmt(stmt_id);
+        v.visit_stmt(prog, stmt)
     }
 }
 
-pub fn visit_scope<V: Visit + ?Sized>(v: &mut V, scope: &HirScope) {
+pub fn visit_scope<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, scope: &HirScope) {
     for var in scope.vars.values() {
-        v.visit_var(var);
+        v.visit_var(prog, var);
     }
 }
 
-pub fn visit_var<V: Visit + ?Sized>(v: &mut V, var: &HirVar) {
-    v.visit_ident(&var.name);
-    v.visit_ty(&var.ty);
+pub fn visit_var<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, var: &HirVar) {
+    v.visit_ident(prog, &var.name);
+    v.visit_ty(prog, &var.ty);
 }
 
-pub fn visit_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirStmt) {
+pub fn visit_stmt<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, stmt: &HirStmt) {
     match &stmt.kind {
         HirStmtKind::FnDef(_) => {
             // We need to do nothing because other funcdefs are separately resolved.
         }
-        HirStmtKind::If(stmt) => v.visit_if_stmt(stmt),
-        HirStmtKind::While(stmt) => v.visit_while_stmt(stmt),
-        HirStmtKind::Begin(stmt) => v.visit_begin_stmt(stmt),
-        HirStmtKind::Assg(stmt) => v.visit_assg_stmt(stmt),
-        HirStmtKind::Dump(stmt) => v.visit_dump_stmt(stmt),
+        HirStmtKind::If(stmt) => v.visit_if_stmt(prog, stmt),
+        HirStmtKind::While(stmt) => v.visit_while_stmt(prog, stmt),
+        HirStmtKind::Begin(stmt) => v.visit_begin_stmt(prog, stmt),
+        HirStmtKind::Assg(stmt) => v.visit_assg_stmt(prog, stmt),
+        HirStmtKind::Dump(stmt) => v.visit_dump_stmt(prog, stmt),
     }
 }
 
-pub fn visit_if_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirIfStmt) {
-    v.visit_arith_expr(&stmt.cond);
-    v.visit_stmt(&stmt.then);
-    if let Some(otherwise) = &stmt.otherwise {
-        v.visit_stmt(otherwise);
+pub fn visit_if_stmt<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, stmt: &HirIfStmt) {
+    v.visit_arith_expr(prog, &stmt.cond);
+    let then = prog.stmt(stmt.then_id);
+    v.visit_stmt(prog, &then);
+    if let Some(otherwise_id) = stmt.otherwise_id {
+        let otherwise = prog.stmt(otherwise_id);
+        v.visit_stmt(prog, otherwise);
     }
 }
 
-pub fn visit_while_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirWhileStmt) {
-    v.visit_arith_expr(&stmt.cond);
-    v.visit_stmt(&stmt.body);
+pub fn visit_while_stmt<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, stmt: &HirWhileStmt) {
+    v.visit_arith_expr(prog, &stmt.cond);
+    let body = prog.stmt(stmt.body_id);
+    v.visit_stmt(prog, &body);
 }
 
-pub fn visit_begin_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirBeginStmt) {
-    for stmt in &stmt.stmts {
-        v.visit_stmt(stmt);
+pub fn visit_begin_stmt<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, stmt: &HirBeginStmt) {
+    for &stmt_id in &stmt.stmt_ids {
+        let stmt = prog.stmt(stmt_id);
+        v.visit_stmt(prog, stmt);
     }
 }
 
-pub fn visit_assg_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirAssgStmt) {
-    v.visit_var_ref(&stmt.var);
-    v.visit_arith_expr(&stmt.expr);
+pub fn visit_assg_stmt<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, stmt: &HirAssgStmt) {
+    v.visit_var_ref(prog, &stmt.var);
+    v.visit_arith_expr(prog, &stmt.expr);
 }
 
-pub fn visit_dump_stmt<V: Visit + ?Sized>(v: &mut V, stmt: &HirDumpStmt) {
-    v.visit_var_ref(&stmt.var);
+pub fn visit_dump_stmt<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, stmt: &HirDumpStmt) {
+    v.visit_var_ref(prog, &stmt.var);
 }
 
-pub fn visit_arith_expr<V: Visit + ?Sized>(v: &mut V, expr: &HirArithExpr) {
+pub fn visit_arith_expr<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, expr: &HirArithExpr) {
     match &expr.kind {
-        HirArithExprKind::Primary(e) => v.visit_primary_expr(e),
-        HirArithExprKind::UnaryOp(_, e) => v.visit_arith_expr(e),
+        HirArithExprKind::Primary(e) => v.visit_primary_expr(prog, e),
+        HirArithExprKind::UnaryOp(_, e) => v.visit_arith_expr(prog, e),
         HirArithExprKind::BinOp(_, lhs, rhs) => {
-            v.visit_arith_expr(lhs);
-            v.visit_arith_expr(rhs);
+            v.visit_arith_expr(prog, lhs);
+            v.visit_arith_expr(prog, rhs);
         }
     }
 }
 
-pub fn visit_primary_expr<V: Visit + ?Sized>(v: &mut V, expr: &HirPrimaryExpr) {
+pub fn visit_primary_expr<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, expr: &HirPrimaryExpr) {
     match &expr.kind {
-        HirPrimaryExprKind::Var(var) => v.visit_var_ref(var),
-        HirPrimaryExprKind::Const(cst) => v.visit_const(cst),
-        HirPrimaryExprKind::FnCall(fncall) => v.visit_fncall(fncall),
-        HirPrimaryExprKind::Paren(expr) => v.visit_arith_expr(expr),
+        HirPrimaryExprKind::Var(var) => v.visit_var_ref(prog, var),
+        HirPrimaryExprKind::Const(cst) => v.visit_const(prog, cst),
+        HirPrimaryExprKind::FnCall(fncall) => v.visit_fncall(prog, fncall),
+        HirPrimaryExprKind::Paren(expr) => v.visit_arith_expr(prog, expr),
     }
 }
 
-pub fn visit_var_ref<V: Visit + ?Sized>(_v: &mut V, _var: &HirVarRef) {}
+pub fn visit_var_ref<V: Visit + ?Sized>(_v: &mut V, _prog: &HirProgram, _var: &HirVarRef) {}
 
-pub fn visit_const<V: Visit + ?Sized>(_v: &mut V, _cst: &HirConst) {}
+pub fn visit_const<V: Visit + ?Sized>(_v: &mut V, _prog: &HirProgram, _cst: &HirConst) {}
 
-pub fn visit_fncall<V: Visit + ?Sized>(v: &mut V, fncall: &HirFnCall) {
+pub fn visit_fncall<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, fncall: &HirFnCall) {
     for arg in &fncall.args {
-        v.visit_arith_expr(arg);
+        v.visit_arith_expr(prog, arg);
     }
 }

@@ -10,6 +10,7 @@ pub struct RhirProgram {
     pub start_fn_id: FnId,
     pub fndecls: BTreeMap<FnId, RhirFnDecl>,
     pub fnbodies: BTreeMap<FnId, RhirFnBody>,
+    pub stmts: BTreeMap<StmtId, RhirStmt>,
 }
 
 impl RhirProgram {
@@ -31,6 +32,12 @@ impl RhirProgram {
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 
+    pub fn stmt(&self, id: StmtId) -> &RhirStmt {
+        self.stmts
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
+    }
+
     pub fn scope_mut(&mut self, id: ScopeId) -> &mut RhirScope {
         self.scopes
             .get_mut(&id)
@@ -47,6 +54,12 @@ impl RhirProgram {
         self.fnbodies
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
+    }
+
+    pub fn stmt_mut(&mut self, id: StmtId) -> &mut RhirStmt {
+        self.stmts
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
     }
 }
 
@@ -104,7 +117,7 @@ pub struct RhirFnBody {
 }
 
 pub enum RhirFnBodyKind {
-    Stmt(Box<RhirBeginStmt>),
+    Stmt(StmtId),
     Builtin(Box<dyn Fn(Vec<Value>) -> Value>),
 }
 
@@ -146,21 +159,21 @@ pub enum RhirStmtKind {
 pub struct RhirIfStmt {
     pub span: Span,
     pub cond: Box<RhirArithExpr>,
-    pub then: Box<RhirStmt>,
-    pub otherwise: Option<Box<RhirStmt>>,
+    pub then_id: StmtId,
+    pub otherwise_id: Option<StmtId>,
 }
 
 #[derive(Debug)]
 pub struct RhirWhileStmt {
     pub span: Span,
     pub cond: Box<RhirArithExpr>,
-    pub body: Box<RhirStmt>,
+    pub body_id: StmtId,
 }
 
 #[derive(Debug)]
 pub struct RhirBeginStmt {
     pub span: Span,
-    pub stmts: Vec<RhirStmt>,
+    pub stmt_ids: Vec<StmtId>,
 }
 
 #[derive(Debug)]

@@ -29,6 +29,7 @@ pub fn lower_ast(stmt: &Ast<AstBeginStmt>, builtins: Vec<Builtin>) -> HirProgram
 
     // lower the entire statement
     let stmt = lctx.lower_begin_stmt(start_fn_id, start_scope_id, stmt);
+    let stmt_id = lctx.register_stmt(stmt.into());
 
     lctx.register_fnbody(
         root_scope_id,
@@ -36,7 +37,7 @@ pub fn lower_ast(stmt: &Ast<AstBeginStmt>, builtins: Vec<Builtin>) -> HirProgram
         HirFnBody {
             id: start_fn_id,
             inner_scope_id: start_scope_id,
-            kind: HirFnBodyKind::Stmt(Box::new(stmt)),
+            kind: HirFnBodyKind::Stmt(stmt_id),
         },
     );
 
@@ -45,6 +46,7 @@ pub fn lower_ast(stmt: &Ast<AstBeginStmt>, builtins: Vec<Builtin>) -> HirProgram
         start_fn_id,
         fndecls: lctx.fndecls,
         fnbodies: lctx.fnbodies,
+        stmts: lctx.stmts,
     }
 }
 
@@ -52,6 +54,7 @@ struct LoweringContext {
     scopes: BTreeMap<ScopeId, HirScope>,
     fndecls: BTreeMap<FnId, HirFnDecl>,
     fnbodies: BTreeMap<FnId, HirFnBody>,
+    stmts: BTreeMap<StmtId, HirStmt>,
     id_gen: ItemIdGenerator,
 }
 
@@ -68,6 +71,7 @@ impl LoweringContext {
             scopes,
             fndecls: BTreeMap::new(),
             fnbodies: BTreeMap::new(),
+            stmts: BTreeMap::new(),
             id_gen,
         };
 
@@ -195,6 +199,12 @@ impl LoweringContext {
         );
     }
 
+    fn register_stmt(&mut self, stmt: HirStmt) -> StmtId {
+        let stmt_id = self.id_gen.gen_stmt();
+        self.stmts.insert(stmt_id, stmt);
+        stmt_id
+    }
+
     fn try_register_var(&mut self, scope_id: ScopeId, name: Ident, ty: HirTy) {
         // If the variable of same name is already registered, skip this. Those correctness is
         // checked in resolve phase, where the variable is actually resolved.
@@ -215,7 +225,7 @@ impl LoweringContext {
             .insert(id, HirVar { id, name, ty });
     }
 
-    fn lower_stmt(&mut self, fn_id: FnId, scope_id: ScopeId, stmt: &Ast<AstStmt>) -> HirStmt {
+    fn lower_stmt(&mut self, fn_id: FnId, scope_id: ScopeId, stmt: &Ast<AstStmt>) -> StmtId {
         let lowered = match &stmt.ast {
             AstStmt::FuncdefStmt(s) => {
                 HirStmtKind::FnDef(self.lower_fndef_stmt(fn_id, scope_id, s))
@@ -227,10 +237,11 @@ impl LoweringContext {
             AstStmt::DumpStmt(s) => HirStmtKind::Dump(self.lower_dump_stmt(fn_id, scope_id, s)),
         };
 
-        HirStmt {
+        let stmt = HirStmt {
             span: stmt.span,
             kind: lowered,
-        }
+        };
+        self.register_stmt(stmt)
     }
 
     fn lower_fndef_stmt(
@@ -261,14 +272,12 @@ impl LoweringContext {
         let (new_fn_id, new_scope_id) =
             self.register_fndecl(scope_id, stmt.span, ident, params, ret_ty);
 
+        let begin_stmt = self.lower_begin_stmt(new_fn_id, new_scope_id, &stmt.ast.body);
+        let begin_stmt_id = self.register_stmt(begin_stmt.into());
         let body = HirFnBody {
             id: new_fn_id,
             inner_scope_id: new_scope_id,
-            kind: HirFnBodyKind::Stmt(Box::new(self.lower_begin_stmt(
-                new_fn_id,
-                new_scope_id,
-                &stmt.ast.body,
-            ))),
+            kind: HirFnBodyKind::Stmt(begin_stmt_id),
         };
         self.register_fnbody(scope_id, new_fn_id, body);
 
@@ -284,12 +293,12 @@ impl LoweringContext {
         HirIfStmt {
             span: stmt.span,
             cond: Box::new(self.lower_arith_expr(fn_id, scope_id, &stmt.ast.cond)),
-            then: Box::new(self.lower_stmt(fn_id, scope_id, &stmt.ast.then)),
-            otherwise: stmt
+            then_id: self.lower_stmt(fn_id, scope_id, &stmt.ast.then),
+            otherwise_id: stmt
                 .ast
                 .otherwise
                 .as_ref()
-                .map(|otherwise| Box::new(self.lower_stmt(fn_id, scope_id, otherwise))),
+                .map(|otherwise| self.lower_stmt(fn_id, scope_id, otherwise)),
         }
     }
 
@@ -302,7 +311,7 @@ impl LoweringContext {
         HirWhileStmt {
             span: stmt.span,
             cond: Box::new(self.lower_arith_expr(fn_id, scope_id, &stmt.ast.cond)),
-            body: Box::new(self.lower_stmt(fn_id, scope_id, &stmt.ast.body)),
+            body_id: self.lower_stmt(fn_id, scope_id, &stmt.ast.body),
         }
     }
 
@@ -312,16 +321,16 @@ impl LoweringContext {
         scope_id: ScopeId,
         stmt: &Ast<AstBeginStmt>,
     ) -> HirBeginStmt {
-        let mut stmts = vec![];
+        let mut stmt_ids = vec![];
         let mut curr = &stmt.ast.list.ast;
         while let AstStmtList::Nonempty { stmt, next } = curr {
-            stmts.push(self.lower_stmt(fn_id, scope_id, stmt));
+            stmt_ids.push(self.lower_stmt(fn_id, scope_id, stmt));
             curr = &next.ast;
         }
 
         HirBeginStmt {
             span: stmt.span,
-            stmts,
+            stmt_ids,
         }
     }
 

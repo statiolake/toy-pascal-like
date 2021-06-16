@@ -3,7 +3,7 @@ use crate::rhir::*;
 use crate::rhir_visit;
 use crate::rhir_visit::Visit;
 use crate::span::Span;
-use crate::thir;
+use crate::thir::*;
 use itertools::izip;
 use itertools::Itertools as _;
 use std::cell::RefCell;
@@ -53,7 +53,7 @@ impl TypeckErrorKind {
 
 pub type Result<T, E = TypeckError> = std::result::Result<T, E>;
 
-pub fn check_rhir(prog: RhirProgram) -> Result<thir::ThirProgram, Vec<TypeckError>> {
+pub fn check_rhir(prog: RhirProgram) -> Result<ThirProgram, Vec<TypeckError>> {
     TypeChecker::from_program(prog).check()
 }
 
@@ -67,7 +67,7 @@ impl TypeChecker {
         Self { prog }
     }
 
-    pub fn check(self) -> Result<thir::ThirProgram, Vec<TypeckError>> {
+    pub fn check(self) -> Result<ThirProgram, Vec<TypeckError>> {
         self.check_all()?;
 
         Ok(self.into_thir())
@@ -202,14 +202,14 @@ impl TypeChecker {
         }
 
         impl Visit for VisitorContext<'_> {
-            fn visit_fnbody(&mut self, fnbody: &RhirFnBody) {
+            fn visit_fnbody(&mut self, prog: &RhirProgram, fnbody: &RhirFnBody) {
                 // set the scope id to the current function
                 self.scope_id = fnbody.inner_scope_id;
-                rhir_visit::visit_fnbody(self, fnbody);
+                rhir_visit::visit_fnbody(self, prog, fnbody);
             }
 
-            fn visit_assg_stmt(&mut self, stmt: &RhirAssgStmt) {
-                rhir_visit::visit_assg_stmt(self, stmt);
+            fn visit_assg_stmt(&mut self, prog: &RhirProgram, stmt: &RhirAssgStmt) {
+                rhir_visit::visit_assg_stmt(self, prog, stmt);
 
                 let scope = self.prog.scope(self.scope_id);
                 let var = scope.var(stmt.var.res);
@@ -243,8 +243,8 @@ impl TypeChecker {
                 *var.ty.res.borrow_mut() = TypeckStatus::Revealed(lt);
             }
 
-            fn visit_arith_expr(&mut self, expr: &RhirArithExpr) {
-                rhir_visit::visit_arith_expr(self, expr);
+            fn visit_arith_expr(&mut self, prog: &RhirProgram, expr: &RhirArithExpr) {
+                rhir_visit::visit_arith_expr(self, prog, expr);
 
                 *expr.ty.res.borrow_mut() = TypeckStatus::Err;
                 match &expr.kind {
@@ -290,8 +290,8 @@ impl TypeChecker {
                 }
             }
 
-            fn visit_primary_expr(&mut self, expr: &RhirPrimaryExpr) {
-                rhir_visit::visit_primary_expr(self, expr);
+            fn visit_primary_expr(&mut self, prog: &RhirProgram, expr: &RhirPrimaryExpr) {
+                rhir_visit::visit_primary_expr(self, prog, expr);
 
                 *expr.ty.res.borrow_mut() = TypeckStatus::Err;
                 match &expr.kind {
@@ -312,8 +312,8 @@ impl TypeChecker {
                 }
             }
 
-            fn visit_fncall(&mut self, fncall: &RhirFnCall) {
-                rhir_visit::visit_fncall(self, fncall);
+            fn visit_fncall(&mut self, prog: &RhirProgram, fncall: &RhirFnCall) {
+                rhir_visit::visit_fncall(self, prog, fncall);
 
                 let fndecl = self.prog.fndecl(fncall.res);
 
@@ -359,53 +359,57 @@ impl TypeChecker {
 }
 
 impl TypeChecker {
-    fn into_thir(self) -> thir::ThirProgram {
+    fn into_thir(self) -> ThirProgram {
         let RhirProgram {
             scopes,
             start_fn_id,
             fndecls,
             fnbodies,
+            stmts,
         } = self.prog;
 
         let scopes = convert_scopes(scopes);
         let fndecls = convert_fndecls(fndecls);
         let fnbodies = convert_fnbodies(fnbodies);
+        let stmts = convert_stmts(stmts);
 
-        return thir::ThirProgram {
+        return ThirProgram {
             scopes,
             start_fn_id,
             fndecls,
             fnbodies,
+            stmts,
         };
 
-        fn convert_scopes(
-            scopes: BTreeMap<ScopeId, RhirScope>,
-        ) -> BTreeMap<ScopeId, thir::ThirScope> {
+        fn convert_scopes(scopes: BTreeMap<ScopeId, RhirScope>) -> BTreeMap<ScopeId, ThirScope> {
             scopes
                 .into_iter()
                 .map(|(id, scope)| (id, convert_scope(scope)))
                 .collect()
         }
 
-        fn convert_fndecls(
-            fndecls: BTreeMap<FnId, RhirFnDecl>,
-        ) -> BTreeMap<FnId, thir::ThirFnDecl> {
+        fn convert_fndecls(fndecls: BTreeMap<FnId, RhirFnDecl>) -> BTreeMap<FnId, ThirFnDecl> {
             fndecls
                 .into_iter()
                 .map(|(id, fndecl)| (id, convert_fndecl(fndecl)))
                 .collect()
         }
 
-        fn convert_fnbodies(
-            fnbodies: BTreeMap<FnId, RhirFnBody>,
-        ) -> BTreeMap<FnId, thir::ThirFnBody> {
+        fn convert_fnbodies(fnbodies: BTreeMap<FnId, RhirFnBody>) -> BTreeMap<FnId, ThirFnBody> {
             fnbodies
                 .into_iter()
                 .map(|(id, fnbody)| (id, convert_fnbody(fnbody)))
                 .collect()
         }
 
-        fn convert_scope(scope: RhirScope) -> thir::ThirScope {
+        fn convert_stmts(stmts: BTreeMap<StmtId, RhirStmt>) -> BTreeMap<StmtId, ThirStmt> {
+            stmts
+                .into_iter()
+                .map(|(id, stmt)| (id, convert_stmt(stmt)))
+                .collect()
+        }
+
+        fn convert_scope(scope: RhirScope) -> ThirScope {
             let RhirScope {
                 id,
                 parent_id,
@@ -414,7 +418,7 @@ impl TypeChecker {
             } = scope;
             let vars = convert_vars(vars);
 
-            thir::ThirScope {
+            ThirScope {
                 id,
                 parent_id,
                 fn_ids,
@@ -422,20 +426,20 @@ impl TypeChecker {
             }
         }
 
-        fn convert_vars(vars: BTreeMap<VarId, RhirVar>) -> BTreeMap<VarId, thir::ThirVar> {
+        fn convert_vars(vars: BTreeMap<VarId, RhirVar>) -> BTreeMap<VarId, ThirVar> {
             vars.into_iter()
                 .map(|(id, var)| (id, convert_var(var)))
                 .collect()
         }
 
-        fn convert_var(var: RhirVar) -> thir::ThirVar {
+        fn convert_var(var: RhirVar) -> ThirVar {
             let RhirVar { id, name, ty } = var;
             let ty = convert_ty(ty);
 
-            thir::ThirVar { id, name, ty }
+            ThirVar { id, name, ty }
         }
 
-        fn convert_fndecl(fndecl: RhirFnDecl) -> thir::ThirFnDecl {
+        fn convert_fndecl(fndecl: RhirFnDecl) -> ThirFnDecl {
             let RhirFnDecl {
                 id,
                 scope_id,
@@ -449,7 +453,7 @@ impl TypeChecker {
             let params = params.into_iter().map(convert_param).collect_vec();
             let ret_ty = convert_ty(ret_ty);
 
-            thir::ThirFnDecl {
+            ThirFnDecl {
                 id,
                 scope_id,
                 span,
@@ -460,18 +464,18 @@ impl TypeChecker {
             }
         }
 
-        fn convert_param(param: RhirParam) -> thir::ThirParam {
+        fn convert_param(param: RhirParam) -> ThirParam {
             let RhirParam { span, res, ty } = param;
             let ty = convert_ty(ty);
 
-            thir::ThirParam { span, res, ty }
+            ThirParam { span, res, ty }
         }
 
-        fn convert_ty(ty: RhirTy) -> thir::ThirTy {
+        fn convert_ty(ty: RhirTy) -> ThirTy {
             let RhirTy { span, res } = ty;
             let res = convert_res(res);
 
-            thir::ThirTy { span, res }
+            ThirTy { span, res }
         }
 
         fn convert_res(res: RefCell<TypeckStatus>) -> TyKind {
@@ -482,132 +486,132 @@ impl TypeChecker {
             }
         }
 
-        fn convert_fnbody(fnbody: RhirFnBody) -> thir::ThirFnBody {
+        fn convert_fnbody(fnbody: RhirFnBody) -> ThirFnBody {
             let RhirFnBody {
                 id,
                 inner_scope_id,
                 kind,
             } = fnbody;
             let kind = match kind {
-                RhirFnBodyKind::Stmt(stmt) => {
-                    thir::ThirFnBodyKind::Stmt(Box::new(convert_begin_stmt(*stmt)))
-                }
-                RhirFnBodyKind::Builtin(dynfn) => thir::ThirFnBodyKind::Builtin(dynfn),
+                RhirFnBodyKind::Stmt(stmt_id) => ThirFnBodyKind::Stmt(stmt_id),
+                RhirFnBodyKind::Builtin(dynfn) => ThirFnBodyKind::Builtin(dynfn),
             };
 
-            thir::ThirFnBody {
+            ThirFnBody {
                 id,
                 inner_scope_id,
                 kind,
             }
         }
 
-        fn convert_stmt(stmt: RhirStmt) -> thir::ThirStmt {
+        fn convert_stmt(stmt: RhirStmt) -> ThirStmt {
             let RhirStmt { span, kind } = stmt;
             let kind = match kind {
-                RhirStmtKind::FnDef(id) => thir::ThirStmtKind::FnDef(id),
-                RhirStmtKind::If(stmt) => thir::ThirStmtKind::If(convert_if_stmt(stmt)),
-                RhirStmtKind::While(stmt) => thir::ThirStmtKind::While(convert_while_stmt(stmt)),
-                RhirStmtKind::Begin(stmt) => thir::ThirStmtKind::Begin(convert_begin_stmt(stmt)),
-                RhirStmtKind::Assg(stmt) => thir::ThirStmtKind::Assg(convert_assg_stmt(stmt)),
-                RhirStmtKind::Dump(stmt) => thir::ThirStmtKind::Dump(convert_dump_stmt(stmt)),
+                RhirStmtKind::FnDef(id) => ThirStmtKind::FnDef(id),
+                RhirStmtKind::If(stmt) => ThirStmtKind::If(convert_if_stmt(stmt)),
+                RhirStmtKind::While(stmt) => ThirStmtKind::While(convert_while_stmt(stmt)),
+                RhirStmtKind::Begin(stmt) => ThirStmtKind::Begin(convert_begin_stmt(stmt)),
+                RhirStmtKind::Assg(stmt) => ThirStmtKind::Assg(convert_assg_stmt(stmt)),
+                RhirStmtKind::Dump(stmt) => ThirStmtKind::Dump(convert_dump_stmt(stmt)),
             };
 
-            thir::ThirStmt { span, kind }
+            ThirStmt { span, kind }
         }
 
-        fn convert_if_stmt(stmt: RhirIfStmt) -> thir::ThirIfStmt {
+        fn convert_if_stmt(stmt: RhirIfStmt) -> ThirIfStmt {
             let RhirIfStmt {
                 span,
                 cond,
-                then,
-                otherwise,
+                then_id,
+                otherwise_id,
             } = stmt;
-
             let cond = Box::new(convert_arith_expr(*cond));
-            let then = Box::new(convert_stmt(*then));
-            let otherwise = otherwise.map(|otherwise| Box::new(convert_stmt(*otherwise)));
 
-            thir::ThirIfStmt {
+            ThirIfStmt {
                 span,
                 cond,
-                then,
-                otherwise,
+                then_id,
+                otherwise_id,
             }
         }
 
-        fn convert_begin_stmt(stmt: RhirBeginStmt) -> thir::ThirBeginStmt {
-            let RhirBeginStmt { span, stmts } = stmt;
-            let stmts = stmts.into_iter().map(convert_stmt).collect_vec();
-
-            thir::ThirBeginStmt { span, stmts }
+        fn convert_begin_stmt(stmt: RhirBeginStmt) -> ThirBeginStmt {
+            let RhirBeginStmt { span, stmt_ids } = stmt;
+            ThirBeginStmt { span, stmt_ids }
         }
 
-        fn convert_while_stmt(stmt: RhirWhileStmt) -> thir::ThirWhileStmt {
-            let RhirWhileStmt { span, cond, body } = stmt;
+        fn convert_while_stmt(stmt: RhirWhileStmt) -> ThirWhileStmt {
+            let RhirWhileStmt {
+                span,
+                cond,
+                body_id,
+            } = stmt;
             let cond = Box::new(convert_arith_expr(*cond));
-            let body = Box::new(convert_stmt(*body));
 
-            thir::ThirWhileStmt { span, cond, body }
+            ThirWhileStmt {
+                span,
+                cond,
+                body_id,
+            }
         }
 
-        fn convert_assg_stmt(stmt: RhirAssgStmt) -> thir::ThirAssgStmt {
+        fn convert_assg_stmt(stmt: RhirAssgStmt) -> ThirAssgStmt {
             let RhirAssgStmt { span, var, expr } = stmt;
             let var = Box::new(convert_var_ref(*var));
             let expr = Box::new(convert_arith_expr(*expr));
 
-            thir::ThirAssgStmt { span, var, expr }
+            ThirAssgStmt { span, var, expr }
         }
 
-        fn convert_dump_stmt(stmt: RhirDumpStmt) -> thir::ThirDumpStmt {
+        fn convert_dump_stmt(stmt: RhirDumpStmt) -> ThirDumpStmt {
             let RhirDumpStmt { span, var } = stmt;
             let var = Box::new(convert_var_ref(*var));
 
-            thir::ThirDumpStmt { span, var }
+            ThirDumpStmt { span, var }
         }
 
-        fn convert_arith_expr(expr: RhirArithExpr) -> thir::ThirArithExpr {
+        fn convert_arith_expr(expr: RhirArithExpr) -> ThirArithExpr {
             let RhirArithExpr { span, ty, kind } = expr;
             let ty = convert_ty(ty);
             let kind = match kind {
                 RhirArithExprKind::Primary(e) => {
-                    thir::ThirArithExprKind::Primary(Box::new(convert_primary_expr(*e)))
+                    ThirArithExprKind::Primary(Box::new(convert_primary_expr(*e)))
                 }
                 RhirArithExprKind::UnaryOp(op, e) => {
-                    thir::ThirArithExprKind::UnaryOp(op, Box::new(convert_arith_expr(*e)))
+                    ThirArithExprKind::UnaryOp(op, Box::new(convert_arith_expr(*e)))
                 }
-                RhirArithExprKind::BinOp(op, lhs, rhs) => thir::ThirArithExprKind::BinOp(
+                RhirArithExprKind::BinOp(op, lhs, rhs) => ThirArithExprKind::BinOp(
                     op,
                     Box::new(convert_arith_expr(*lhs)),
                     Box::new(convert_arith_expr(*rhs)),
                 ),
             };
 
-            thir::ThirArithExpr { span, ty, kind }
+            ThirArithExpr { span, ty, kind }
         }
 
-        fn convert_primary_expr(expr: RhirPrimaryExpr) -> thir::ThirPrimaryExpr {
+        fn convert_primary_expr(expr: RhirPrimaryExpr) -> ThirPrimaryExpr {
             let RhirPrimaryExpr { span, ty, kind } = expr;
             let ty = convert_ty(ty);
             let kind = match kind {
                 RhirPrimaryExprKind::Var(var) => {
-                    thir::ThirPrimaryExprKind::Var(Box::new(convert_var_ref(*var)))
+                    ThirPrimaryExprKind::Var(Box::new(convert_var_ref(*var)))
                 }
                 RhirPrimaryExprKind::Const(cst) => {
-                    thir::ThirPrimaryExprKind::Const(Box::new(convert_const(*cst)))
+                    ThirPrimaryExprKind::Const(Box::new(convert_const(*cst)))
                 }
                 RhirPrimaryExprKind::FnCall(fncall) => {
-                    thir::ThirPrimaryExprKind::FnCall(Box::new(convert_fncall(*fncall)))
+                    ThirPrimaryExprKind::FnCall(Box::new(convert_fncall(*fncall)))
                 }
                 RhirPrimaryExprKind::Paren(expr) => {
-                    thir::ThirPrimaryExprKind::Paren(Box::new(convert_arith_expr(*expr)))
+                    ThirPrimaryExprKind::Paren(Box::new(convert_arith_expr(*expr)))
                 }
             };
 
-            thir::ThirPrimaryExpr { span, ty, kind }
+            ThirPrimaryExpr { span, ty, kind }
         }
 
-        fn convert_fncall(fncall: RhirFnCall) -> thir::ThirFnCall {
+        fn convert_fncall(fncall: RhirFnCall) -> ThirFnCall {
             let RhirFnCall {
                 span,
                 span_name,
@@ -616,7 +620,7 @@ impl TypeChecker {
             } = fncall;
             let args = args.into_iter().map(convert_arith_expr).collect_vec();
 
-            thir::ThirFnCall {
+            ThirFnCall {
                 span,
                 span_name,
                 res,
@@ -624,16 +628,16 @@ impl TypeChecker {
             }
         }
 
-        fn convert_var_ref(var: RhirVarRef) -> thir::ThirVarRef {
+        fn convert_var_ref(var: RhirVarRef) -> ThirVarRef {
             let RhirVarRef { span, res } = var;
-            thir::ThirVarRef { span, res }
+            ThirVarRef { span, res }
         }
 
-        fn convert_const(cst: RhirConst) -> thir::ThirConst {
+        fn convert_const(cst: RhirConst) -> ThirConst {
             let RhirConst { span, ty, value } = cst;
             let ty = convert_ty(ty);
 
-            thir::ThirConst { span, ty, value }
+            ThirConst { span, ty, value }
         }
     }
 }

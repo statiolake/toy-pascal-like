@@ -9,6 +9,7 @@ pub struct ThirProgram {
     pub start_fn_id: FnId,
     pub fndecls: BTreeMap<FnId, ThirFnDecl>,
     pub fnbodies: BTreeMap<FnId, ThirFnBody>,
+    pub stmts: BTreeMap<StmtId, ThirStmt>,
 }
 
 #[derive(Debug)]
@@ -38,6 +39,12 @@ impl ThirProgram {
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 
+    pub fn stmt(&self, id: StmtId) -> &ThirStmt {
+        self.stmts
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
+    }
+
     pub fn scope_mut(&mut self, id: ScopeId) -> &mut ThirScope {
         self.scopes
             .get_mut(&id)
@@ -54,6 +61,12 @@ impl ThirProgram {
         self.fnbodies
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
+    }
+
+    pub fn stmt_mut(&mut self, id: StmtId) -> &mut ThirStmt {
+        self.stmts
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
     }
 }
 
@@ -93,7 +106,7 @@ pub struct ThirFnBody {
 }
 
 pub enum ThirFnBodyKind {
-    Stmt(Box<ThirBeginStmt>),
+    Stmt(StmtId),
     Builtin(Box<dyn Fn(Vec<Value>) -> Value>),
 }
 
@@ -135,21 +148,21 @@ pub enum ThirStmtKind {
 pub struct ThirIfStmt {
     pub span: Span,
     pub cond: Box<ThirArithExpr>,
-    pub then: Box<ThirStmt>,
-    pub otherwise: Option<Box<ThirStmt>>,
+    pub then_id: StmtId,
+    pub otherwise_id: Option<StmtId>,
 }
 
 #[derive(Debug)]
 pub struct ThirWhileStmt {
     pub span: Span,
     pub cond: Box<ThirArithExpr>,
-    pub body: Box<ThirStmt>,
+    pub body_id: StmtId,
 }
 
 #[derive(Debug)]
 pub struct ThirBeginStmt {
     pub span: Span,
-    pub stmts: Vec<ThirStmt>,
+    pub stmt_ids: Vec<StmtId>,
 }
 
 #[derive(Debug)]
