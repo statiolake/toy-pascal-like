@@ -215,7 +215,8 @@ impl TypeChecker {
                 let var = scope.var(stmt.var.res);
 
                 // check lhs and rhs types match
-                let rt = stmt.expr.ty.res.borrow().clone();
+                let expr = prog.expr(stmt.expr_id);
+                let rt = expr.ty.res.borrow().clone();
                 let rt = match rt {
                     TypeckStatus::Infer => panic_not_inferred!(),
                     TypeckStatus::Revealed(ty) => ty,
@@ -231,7 +232,7 @@ impl TypeChecker {
 
                 if lt != rt {
                     self.errors.push(TypeckError {
-                        span: stmt.expr.span,
+                        span: expr.span,
                         kind: TypeckErrorKind::TyMismatch {
                             expected: lt,
                             found: rt,
@@ -248,16 +249,17 @@ impl TypeChecker {
 
                 *expr.ty.res.borrow_mut() = TypeckStatus::Err;
                 match &expr.kind {
-                    RhirArithExprKind::Primary(e) => {
-                        *expr.ty.res.borrow_mut() = e.ty.res.borrow().clone();
+                    RhirArithExprKind::Primary(inner_expr) => {
+                        *expr.ty.res.borrow_mut() = inner_expr.ty.res.borrow().clone();
                     }
-                    RhirArithExprKind::UnaryOp(op, e) => {
-                        let ty = match e.ty.res.borrow().clone() {
+                    RhirArithExprKind::UnaryOp(op, inner_expr_id) => {
+                        let inner_expr = prog.expr(*inner_expr_id);
+                        let ty = match inner_expr.ty.res.borrow().clone() {
                             TypeckStatus::Infer => panic_not_inferred!(),
                             TypeckStatus::Revealed(ty) => ty,
                             TypeckStatus::Err => return,
                         };
-                        let ret_ty = match unary_op_ret_ty(*op, e.span, &ty) {
+                        let ret_ty = match unary_op_ret_ty(*op, inner_expr.span, &ty) {
                             Ok(ty) => ty,
                             Err(err) => {
                                 self.errors.push(err);
@@ -266,19 +268,21 @@ impl TypeChecker {
                         };
                         *expr.ty.res.borrow_mut() = TypeckStatus::Revealed(ret_ty);
                     }
-                    RhirArithExprKind::BinOp(op, l, r) => {
-                        let lt = match l.ty.res.borrow().clone() {
+                    RhirArithExprKind::BinOp(op, lhs_id, rhs_id) => {
+                        let lhs = prog.expr(*lhs_id);
+                        let lt = match lhs.ty.res.borrow().clone() {
                             TypeckStatus::Infer => panic_not_inferred!(),
                             TypeckStatus::Revealed(ty) => ty,
                             TypeckStatus::Err => return,
                         };
-                        let rt = match r.ty.res.borrow().clone() {
+                        let rhs = prog.expr(*rhs_id);
+                        let rt = match rhs.ty.res.borrow().clone() {
                             TypeckStatus::Infer => panic_not_inferred!(),
                             TypeckStatus::Revealed(ty) => ty,
                             TypeckStatus::Err => return,
                         };
 
-                        let ret_ty = match bin_op_ret_ty(*op, expr.span, r.span, &lt, &rt) {
+                        let ret_ty = match bin_op_ret_ty(*op, expr.span, rhs.span, &lt, &rt) {
                             Ok(ty) => ty,
                             Err(err) => {
                                 self.errors.push(err);
@@ -306,8 +310,9 @@ impl TypeChecker {
                         let fndecl = self.prog.fndecl(fc.res);
                         *expr.ty.res.borrow_mut() = fndecl.ret_ty.res.borrow().clone()
                     }
-                    RhirPrimaryExprKind::Paren(e) => {
-                        *expr.ty.res.borrow_mut() = e.ty.res.borrow().clone();
+                    RhirPrimaryExprKind::Paren(inner_expr_id) => {
+                        let inner_expr = prog.expr(*inner_expr_id);
+                        *expr.ty.res.borrow_mut() = inner_expr.ty.res.borrow().clone();
                     }
                 }
             }
@@ -318,25 +323,26 @@ impl TypeChecker {
                 let fndecl = self.prog.fndecl(fncall.res);
 
                 // check the number of args
-                if fncall.args.len() != fndecl.params.len() {
+                if fncall.arg_ids.len() != fndecl.params.len() {
                     self.errors.push(TypeckError {
                         span: fncall.span,
                         kind: TypeckErrorKind::ArityMismatch {
                             expected: fndecl.params.len(),
-                            found: fncall.args.len(),
+                            found: fncall.arg_ids.len(),
                         },
                     });
                     return;
                 }
 
                 // check the type of each args
-                for (param, arg) in izip!(&fndecl.params, &fncall.args) {
+                for (param, arg_id) in izip!(&fndecl.params, &fncall.arg_ids) {
                     let pt = match &*param.ty.res.borrow() {
                         TypeckStatus::Revealed(ty) => ty.clone(),
                         TypeckStatus::Err | TypeckStatus::Infer => {
                             panic!("type of the function parameter is unknown")
                         }
                     };
+                    let arg = prog.expr(*arg_id);
                     let at = match &*arg.ty.res.borrow() {
                         TypeckStatus::Revealed(ty) => ty.clone(),
                         TypeckStatus::Infer => panic_not_inferred!(),
@@ -366,12 +372,14 @@ impl TypeChecker {
             fndecls,
             fnbodies,
             stmts,
+            exprs,
         } = self.prog;
 
         let scopes = convert_scopes(scopes);
         let fndecls = convert_fndecls(fndecls);
         let fnbodies = convert_fnbodies(fnbodies);
         let stmts = convert_stmts(stmts);
+        let exprs = convert_exprs(exprs);
 
         return ThirProgram {
             scopes,
@@ -379,6 +387,7 @@ impl TypeChecker {
             fndecls,
             fnbodies,
             stmts,
+            exprs,
         };
 
         fn convert_scopes(scopes: BTreeMap<ScopeId, RhirScope>) -> BTreeMap<ScopeId, ThirScope> {
@@ -406,6 +415,15 @@ impl TypeChecker {
             stmts
                 .into_iter()
                 .map(|(id, stmt)| (id, convert_stmt(stmt)))
+                .collect()
+        }
+
+        fn convert_exprs(
+            exprs: BTreeMap<ExprId, RhirArithExpr>,
+        ) -> BTreeMap<ExprId, ThirArithExpr> {
+            exprs
+                .into_iter()
+                .map(|(id, expr)| (id, convert_arith_expr(expr)))
                 .collect()
         }
 
@@ -521,15 +539,14 @@ impl TypeChecker {
         fn convert_if_stmt(stmt: RhirIfStmt) -> ThirIfStmt {
             let RhirIfStmt {
                 span,
-                cond,
+                cond_id,
                 then_id,
                 otherwise_id,
             } = stmt;
-            let cond = Box::new(convert_arith_expr(*cond));
 
             ThirIfStmt {
                 span,
-                cond,
+                cond_id,
                 then_id,
                 otherwise_id,
             }
@@ -543,24 +560,22 @@ impl TypeChecker {
         fn convert_while_stmt(stmt: RhirWhileStmt) -> ThirWhileStmt {
             let RhirWhileStmt {
                 span,
-                cond,
+                cond_id,
                 body_id,
             } = stmt;
-            let cond = Box::new(convert_arith_expr(*cond));
 
             ThirWhileStmt {
                 span,
-                cond,
+                cond_id,
                 body_id,
             }
         }
 
         fn convert_assg_stmt(stmt: RhirAssgStmt) -> ThirAssgStmt {
-            let RhirAssgStmt { span, var, expr } = stmt;
+            let RhirAssgStmt { span, var, expr_id } = stmt;
             let var = Box::new(convert_var_ref(*var));
-            let expr = Box::new(convert_arith_expr(*expr));
 
-            ThirAssgStmt { span, var, expr }
+            ThirAssgStmt { span, var, expr_id }
         }
 
         fn convert_dump_stmt(stmt: RhirDumpStmt) -> ThirDumpStmt {
@@ -577,14 +592,8 @@ impl TypeChecker {
                 RhirArithExprKind::Primary(e) => {
                     ThirArithExprKind::Primary(Box::new(convert_primary_expr(*e)))
                 }
-                RhirArithExprKind::UnaryOp(op, e) => {
-                    ThirArithExprKind::UnaryOp(op, Box::new(convert_arith_expr(*e)))
-                }
-                RhirArithExprKind::BinOp(op, lhs, rhs) => ThirArithExprKind::BinOp(
-                    op,
-                    Box::new(convert_arith_expr(*lhs)),
-                    Box::new(convert_arith_expr(*rhs)),
-                ),
+                RhirArithExprKind::UnaryOp(op, e) => ThirArithExprKind::UnaryOp(op, e),
+                RhirArithExprKind::BinOp(op, lhs, rhs) => ThirArithExprKind::BinOp(op, lhs, rhs),
             };
 
             ThirArithExpr { span, ty, kind }
@@ -603,9 +612,7 @@ impl TypeChecker {
                 RhirPrimaryExprKind::FnCall(fncall) => {
                     ThirPrimaryExprKind::FnCall(Box::new(convert_fncall(*fncall)))
                 }
-                RhirPrimaryExprKind::Paren(expr) => {
-                    ThirPrimaryExprKind::Paren(Box::new(convert_arith_expr(*expr)))
-                }
+                RhirPrimaryExprKind::Paren(expr) => ThirPrimaryExprKind::Paren(expr),
             };
 
             ThirPrimaryExpr { span, ty, kind }
@@ -616,15 +623,14 @@ impl TypeChecker {
                 span,
                 span_name,
                 res,
-                args,
+                arg_ids,
             } = fncall;
-            let args = args.into_iter().map(convert_arith_expr).collect_vec();
 
             ThirFnCall {
                 span,
                 span_name,
                 res,
-                args,
+                arg_ids,
             }
         }
 

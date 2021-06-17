@@ -10,6 +10,7 @@ pub struct ThirProgram {
     pub fndecls: BTreeMap<FnId, ThirFnDecl>,
     pub fnbodies: BTreeMap<FnId, ThirFnBody>,
     pub stmts: BTreeMap<StmtId, ThirStmt>,
+    pub exprs: BTreeMap<ExprId, ThirArithExpr>,
 }
 
 #[derive(Debug)]
@@ -45,6 +46,12 @@ impl ThirProgram {
             .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
     }
 
+    pub fn expr(&self, id: ExprId) -> &ThirArithExpr {
+        self.exprs
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
+    }
+
     pub fn scope_mut(&mut self, id: ScopeId) -> &mut ThirScope {
         self.scopes
             .get_mut(&id)
@@ -67,6 +74,12 @@ impl ThirProgram {
         self.stmts
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
+    }
+
+    pub fn expr_mut(&mut self, id: ExprId) -> &mut ThirArithExpr {
+        self.exprs
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
     }
 }
 
@@ -147,7 +160,7 @@ pub enum ThirStmtKind {
 #[derive(Debug)]
 pub struct ThirIfStmt {
     pub span: Span,
-    pub cond: Box<ThirArithExpr>,
+    pub cond_id: ExprId,
     pub then_id: StmtId,
     pub otherwise_id: Option<StmtId>,
 }
@@ -155,7 +168,7 @@ pub struct ThirIfStmt {
 #[derive(Debug)]
 pub struct ThirWhileStmt {
     pub span: Span,
-    pub cond: Box<ThirArithExpr>,
+    pub cond_id: ExprId,
     pub body_id: StmtId,
 }
 
@@ -169,7 +182,7 @@ pub struct ThirBeginStmt {
 pub struct ThirAssgStmt {
     pub span: Span,
     pub var: Box<ThirVarRef>,
-    pub expr: Box<ThirArithExpr>,
+    pub expr_id: ExprId,
 }
 
 #[derive(Debug)]
@@ -188,8 +201,8 @@ pub struct ThirArithExpr {
 #[derive(Debug)]
 pub enum ThirArithExprKind {
     Primary(Box<ThirPrimaryExpr>),
-    UnaryOp(UnaryOp, Box<ThirArithExpr>),
-    BinOp(BinOp, Box<ThirArithExpr>, Box<ThirArithExpr>),
+    UnaryOp(UnaryOp, ExprId),
+    BinOp(BinOp, ExprId, ExprId),
 }
 
 #[derive(Debug)]
@@ -204,7 +217,7 @@ pub enum ThirPrimaryExprKind {
     Var(Box<ThirVarRef>),
     Const(Box<ThirConst>),
     FnCall(Box<ThirFnCall>),
-    Paren(Box<ThirArithExpr>),
+    Paren(ExprId),
 }
 
 #[derive(Debug)]
@@ -225,5 +238,5 @@ pub struct ThirFnCall {
     pub span: Span,
     pub span_name: Span,
     pub res: FnId,
-    pub args: Vec<ThirArithExpr>,
+    pub arg_ids: Vec<ExprId>,
 }

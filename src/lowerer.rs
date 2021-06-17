@@ -47,6 +47,7 @@ pub fn lower_ast(stmt: &Ast<AstBeginStmt>, builtins: Vec<Builtin>) -> HirProgram
         fndecls: lctx.fndecls,
         fnbodies: lctx.fnbodies,
         stmts: lctx.stmts,
+        exprs: lctx.exprs,
     }
 }
 
@@ -55,6 +56,7 @@ struct LoweringContext {
     fndecls: BTreeMap<FnId, HirFnDecl>,
     fnbodies: BTreeMap<FnId, HirFnBody>,
     stmts: BTreeMap<StmtId, HirStmt>,
+    exprs: BTreeMap<ExprId, HirArithExpr>,
     id_gen: ItemIdGenerator,
 }
 
@@ -72,6 +74,7 @@ impl LoweringContext {
             fndecls: BTreeMap::new(),
             fnbodies: BTreeMap::new(),
             stmts: BTreeMap::new(),
+            exprs: BTreeMap::new(),
             id_gen,
         };
 
@@ -205,6 +208,12 @@ impl LoweringContext {
         stmt_id
     }
 
+    fn register_expr(&mut self, expr: HirArithExpr) -> ExprId {
+        let expr_id = self.id_gen.gen_expr();
+        self.exprs.insert(expr_id, expr);
+        expr_id
+    }
+
     fn try_register_var(&mut self, scope_id: ScopeId, name: Ident, ty: HirTy) {
         // If the variable of same name is already registered, skip this. Those correctness is
         // checked in resolve phase, where the variable is actually resolved.
@@ -292,7 +301,7 @@ impl LoweringContext {
     ) -> HirIfStmt {
         HirIfStmt {
             span: stmt.span,
-            cond: Box::new(self.lower_arith_expr(fn_id, scope_id, &stmt.ast.cond)),
+            cond_id: self.lower_arith_expr(fn_id, scope_id, &stmt.ast.cond),
             then_id: self.lower_stmt(fn_id, scope_id, &stmt.ast.then),
             otherwise_id: stmt
                 .ast
@@ -310,7 +319,7 @@ impl LoweringContext {
     ) -> HirWhileStmt {
         HirWhileStmt {
             span: stmt.span,
-            cond: Box::new(self.lower_arith_expr(fn_id, scope_id, &stmt.ast.cond)),
+            cond_id: self.lower_arith_expr(fn_id, scope_id, &stmt.ast.cond),
             body_id: self.lower_stmt(fn_id, scope_id, &stmt.ast.body),
         }
     }
@@ -343,7 +352,7 @@ impl LoweringContext {
         HirAssgStmt {
             span: stmt.span,
             var: Box::new(self.lower_var(fn_id, scope_id, &stmt.ast.var, true)),
-            expr: Box::new(self.lower_arith_expr(fn_id, scope_id, &stmt.ast.expr)),
+            expr_id: self.lower_arith_expr(fn_id, scope_id, &stmt.ast.expr),
         }
     }
 
@@ -364,7 +373,7 @@ impl LoweringContext {
         fn_id: FnId,
         scope_id: ScopeId,
         expr: &Ast<AstArithExpr>,
-    ) -> HirArithExpr {
+    ) -> ExprId {
         match &expr.ast {
             AstArithExpr::AddExpr(expr) => self.lower_add_expr(fn_id, scope_id, &*expr),
             AstArithExpr::CompareExpr(op, l, r) => {
@@ -378,28 +387,24 @@ impl LoweringContext {
                 };
                 let kind = HirArithExprKind::BinOp(
                     op,
-                    Box::new(self.lower_arith_expr(fn_id, scope_id, l)),
-                    Box::new(self.lower_add_expr(fn_id, scope_id, r)),
+                    self.lower_arith_expr(fn_id, scope_id, l),
+                    self.lower_add_expr(fn_id, scope_id, r),
                 );
-
-                HirArithExpr {
+                let expr = HirArithExpr {
                     span: expr.span,
                     ty: HirTy {
                         span: expr.span,
                         res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
                     },
                     kind,
-                }
+                };
+
+                self.register_expr(expr)
             }
         }
     }
 
-    fn lower_add_expr(
-        &mut self,
-        fn_id: FnId,
-        scope_id: ScopeId,
-        expr: &Ast<AstAddExpr>,
-    ) -> HirArithExpr {
+    fn lower_add_expr(&mut self, fn_id: FnId, scope_id: ScopeId, expr: &Ast<AstAddExpr>) -> ExprId {
         match &expr.ast {
             AstAddExpr::MulExpr(e) => self.lower_mul_expr(fn_id, scope_id, e),
             AstAddExpr::Add(l, r) | AstAddExpr::Sub(l, r) => {
@@ -410,28 +415,24 @@ impl LoweringContext {
                 };
                 let kind = HirArithExprKind::BinOp(
                     op,
-                    Box::new(self.lower_add_expr(fn_id, scope_id, l)),
-                    Box::new(self.lower_mul_expr(fn_id, scope_id, r)),
+                    self.lower_add_expr(fn_id, scope_id, l),
+                    self.lower_mul_expr(fn_id, scope_id, r),
                 );
-
-                HirArithExpr {
+                let expr = HirArithExpr {
                     span: expr.span,
                     kind,
                     ty: HirTy {
                         span: expr.span,
                         res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
                     },
-                }
+                };
+
+                self.register_expr(expr)
             }
         }
     }
 
-    fn lower_mul_expr(
-        &mut self,
-        fn_id: FnId,
-        scope_id: ScopeId,
-        expr: &Ast<AstMulExpr>,
-    ) -> HirArithExpr {
+    fn lower_mul_expr(&mut self, fn_id: FnId, scope_id: ScopeId, expr: &Ast<AstMulExpr>) -> ExprId {
         match &expr.ast {
             AstMulExpr::UnaryExpr(e) => self.lower_unary_expr(fn_id, scope_id, e),
             AstMulExpr::Mul(l, r) | AstMulExpr::Div(l, r) => {
@@ -442,18 +443,19 @@ impl LoweringContext {
                 };
                 let kind = HirArithExprKind::BinOp(
                     op,
-                    Box::new(self.lower_mul_expr(fn_id, scope_id, l)),
-                    Box::new(self.lower_unary_expr(fn_id, scope_id, r)),
+                    self.lower_mul_expr(fn_id, scope_id, l),
+                    self.lower_unary_expr(fn_id, scope_id, r),
                 );
-
-                HirArithExpr {
+                let expr = HirArithExpr {
                     span: expr.span,
                     kind,
                     ty: HirTy {
                         span: expr.span,
                         res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
                     },
-                }
+                };
+
+                self.register_expr(expr)
             }
         }
     }
@@ -463,8 +465,8 @@ impl LoweringContext {
         fn_id: FnId,
         scope_id: ScopeId,
         expr: &Ast<AstUnaryExpr>,
-    ) -> HirArithExpr {
-        match &expr.ast {
+    ) -> ExprId {
+        let expr = match &expr.ast {
             AstUnaryExpr::PrimaryExpr(e) => HirArithExpr {
                 span: expr.span,
                 ty: HirTy {
@@ -483,10 +485,12 @@ impl LoweringContext {
                 },
                 kind: HirArithExprKind::UnaryOp(
                     UnaryOp::Neg,
-                    Box::new(self.lower_unary_expr(fn_id, scope_id, &e)),
+                    self.lower_unary_expr(fn_id, scope_id, &e),
                 ),
             },
-        }
+        };
+
+        self.register_expr(expr)
     }
 
     fn lower_primary_expr(
@@ -511,9 +515,9 @@ impl LoweringContext {
                 AstPrimaryExpr::FnCall(call) => {
                     HirPrimaryExprKind::FnCall(Box::new(self.lower_fncall(fn_id, scope_id, call)))
                 }
-                AstPrimaryExpr::Paren(expr) => HirPrimaryExprKind::Paren(Box::new(
-                    self.lower_arith_expr(fn_id, scope_id, expr),
-                )),
+                AstPrimaryExpr::Paren(expr) => {
+                    HirPrimaryExprKind::Paren(self.lower_arith_expr(fn_id, scope_id, expr))
+                }
             },
         }
     }

@@ -343,7 +343,8 @@ impl Resolver {
             }
 
             fn visit_if_stmt(&mut self, prog: &HirProgram, stmt: &HirIfStmt) {
-                self.visit_arith_expr(prog, &stmt.cond);
+                let cond = prog.expr(stmt.cond_id);
+                self.visit_arith_expr(prog, cond);
 
                 // if stmt may create "possibly uninitialized variables".
                 let init_vars = self.init_vars.clone();
@@ -367,7 +368,8 @@ impl Resolver {
                 // any variables declared inside the while loop is "possibly uninitialized", because
                 // the loop body is not necessarily run.
                 let init_vars = self.init_vars.clone();
-                self.visit_arith_expr(prog, &stmt.cond);
+                let cond = prog.expr(stmt.cond_id);
+                self.visit_arith_expr(prog, cond);
                 let body = prog.stmt(stmt.body_id);
                 self.visit_stmt(prog, body);
                 self.init_vars = init_vars;
@@ -376,7 +378,8 @@ impl Resolver {
             fn visit_assg_stmt(&mut self, prog: &HirProgram, stmt: &HirAssgStmt) {
                 // We can't use hir_visit::visit_assg_stmt(), since that will try to resolve var_ref
                 // of asignee.
-                self.visit_arith_expr(prog, &stmt.expr);
+                let expr = prog.expr(stmt.expr_id);
+                self.visit_arith_expr(prog, expr);
                 if let Err(err) = self.resolve_var_ref(prog, &*stmt.var, true) {
                     self.errors.push(err);
                     return;
@@ -417,12 +420,14 @@ impl Resolver {
             fndecls,
             fnbodies,
             stmts,
+            exprs,
         } = self.prog;
 
         let scopes = convert_scopes(scopes);
         let fndecls = convert_fndecls(fndecls);
         let fnbodies = convert_fnbodies(fnbodies);
         let stmts = convert_stmts(stmts);
+        let exprs = convert_exprs(exprs);
 
         return RhirProgram {
             scopes,
@@ -430,6 +435,7 @@ impl Resolver {
             fndecls,
             fnbodies,
             stmts,
+            exprs,
         };
 
         fn convert_scopes(scopes: BTreeMap<ScopeId, HirScope>) -> BTreeMap<ScopeId, RhirScope> {
@@ -457,6 +463,13 @@ impl Resolver {
             stmts
                 .into_iter()
                 .map(|(id, stmt)| (id, convert_stmt(stmt)))
+                .collect()
+        }
+
+        fn convert_exprs(exprs: BTreeMap<ExprId, HirArithExpr>) -> BTreeMap<ExprId, RhirArithExpr> {
+            exprs
+                .into_iter()
+                .map(|(id, expr)| (id, convert_arith_expr(expr)))
                 .collect()
         }
 
@@ -577,15 +590,14 @@ impl Resolver {
         fn convert_if_stmt(stmt: HirIfStmt) -> RhirIfStmt {
             let HirIfStmt {
                 span,
-                cond,
+                cond_id,
                 then_id,
                 otherwise_id,
             } = stmt;
-            let cond = Box::new(convert_arith_expr(*cond));
 
             RhirIfStmt {
                 span,
-                cond,
+                cond_id,
                 then_id,
                 otherwise_id,
             }
@@ -599,30 +611,26 @@ impl Resolver {
         fn convert_while_stmt(stmt: HirWhileStmt) -> RhirWhileStmt {
             let HirWhileStmt {
                 span,
-                cond,
+                cond_id,
                 body_id,
             } = stmt;
-            let cond = Box::new(convert_arith_expr(*cond));
 
             RhirWhileStmt {
                 span,
-                cond,
+                cond_id,
                 body_id,
             }
         }
 
         fn convert_assg_stmt(stmt: HirAssgStmt) -> RhirAssgStmt {
-            let HirAssgStmt { span, var, expr } = stmt;
+            let HirAssgStmt { span, var, expr_id } = stmt;
             let var = Box::new(convert_var_ref(*var));
-            let expr = Box::new(convert_arith_expr(*expr));
-
-            RhirAssgStmt { span, var, expr }
+            RhirAssgStmt { span, var, expr_id }
         }
 
         fn convert_dump_stmt(stmt: HirDumpStmt) -> RhirDumpStmt {
             let HirDumpStmt { span, var } = stmt;
             let var = Box::new(convert_var_ref(*var));
-
             RhirDumpStmt { span, var }
         }
 
@@ -633,14 +641,8 @@ impl Resolver {
                 HirArithExprKind::Primary(e) => {
                     RhirArithExprKind::Primary(Box::new(convert_primary_expr(*e)))
                 }
-                HirArithExprKind::UnaryOp(op, e) => {
-                    RhirArithExprKind::UnaryOp(op, Box::new(convert_arith_expr(*e)))
-                }
-                HirArithExprKind::BinOp(op, lhs, rhs) => RhirArithExprKind::BinOp(
-                    op,
-                    Box::new(convert_arith_expr(*lhs)),
-                    Box::new(convert_arith_expr(*rhs)),
-                ),
+                HirArithExprKind::UnaryOp(op, e) => RhirArithExprKind::UnaryOp(op, e),
+                HirArithExprKind::BinOp(op, lhs, rhs) => RhirArithExprKind::BinOp(op, lhs, rhs),
             };
 
             RhirArithExpr { span, ty, kind }
@@ -659,9 +661,7 @@ impl Resolver {
                 HirPrimaryExprKind::FnCall(fncall) => {
                     RhirPrimaryExprKind::FnCall(Box::new(convert_fncall(*fncall)))
                 }
-                HirPrimaryExprKind::Paren(expr) => {
-                    RhirPrimaryExprKind::Paren(Box::new(convert_arith_expr(*expr)))
-                }
+                HirPrimaryExprKind::Paren(expr) => RhirPrimaryExprKind::Paren(expr),
             };
 
             RhirPrimaryExpr { span, ty, kind }
@@ -675,13 +675,12 @@ impl Resolver {
                 args,
             } = fncall;
             let res = convert_res(res);
-            let args = args.into_iter().map(convert_arith_expr).collect_vec();
 
             RhirFnCall {
                 span,
                 span_name,
                 res,
-                args,
+                arg_ids: args,
             }
         }
 

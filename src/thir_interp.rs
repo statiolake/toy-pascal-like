@@ -123,7 +123,8 @@ impl State<'_> {
     }
 
     fn run_if_stmt(&mut self, stmt: &ThirIfStmt) {
-        if self.eval_arith_expr(&*stmt.cond).unwrap_bool() {
+        let cond = self.prog.expr(stmt.cond_id);
+        if self.eval_arith_expr(cond).unwrap_bool() {
             let then = self.prog.stmt(stmt.then_id);
             self.run_stmt(then);
         } else if let Some(otherwise_id) = stmt.otherwise_id {
@@ -133,8 +134,9 @@ impl State<'_> {
     }
 
     fn run_while_stmt(&mut self, stmt: &ThirWhileStmt) {
+        let cond = self.prog.expr(stmt.cond_id);
         let body = self.prog.stmt(stmt.body_id);
-        while self.eval_arith_expr(&*stmt.cond).unwrap_bool() {
+        while self.eval_arith_expr(cond).unwrap_bool() {
             self.run_stmt(body);
         }
     }
@@ -147,7 +149,8 @@ impl State<'_> {
     }
 
     fn run_assg_stmt(&mut self, stmt: &ThirAssgStmt) {
-        *self.vars.get_mut(&stmt.var.res).unwrap() = Some(self.eval_arith_expr(&*stmt.expr));
+        let expr = self.prog.expr(stmt.expr_id);
+        *self.vars.get_mut(&stmt.var.res).unwrap() = Some(self.eval_arith_expr(expr));
     }
 
     fn run_dump_stmt(&mut self, stmt: &ThirDumpStmt) {
@@ -160,41 +163,48 @@ impl State<'_> {
     fn eval_arith_expr(&self, stmt: &ThirArithExpr) -> Value {
         match &stmt.kind {
             ThirArithExprKind::Primary(e) => self.eval_primary_expr(e),
-            ThirArithExprKind::UnaryOp(op, e) => match op {
-                UnaryOp::Neg => apply_op!(unary -, self.eval_arith_expr(e)),
-            },
-            ThirArithExprKind::BinOp(op, l, r) => match op {
-                BinOp::Add => {
-                    apply_op!(arith+, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Sub => {
-                    apply_op!(arith -, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Mul => {
-                    apply_op!(arith *, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Div => {
-                    apply_op!(arith /, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Lt => {
-                    apply_op!(compare <, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Gt => {
-                    apply_op!(compare >, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Le => {
-                    apply_op!(compare <=, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Ge => {
-                    apply_op!(compare >=, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Eq => {
-                    apply_op!(equal ==, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Ne => {
-                    apply_op!(equal !=, self.eval_arith_expr(l), self.eval_arith_expr(r))
+            ThirArithExprKind::UnaryOp(op, expr_id) => match op {
+                UnaryOp::Neg => {
+                    let expr = self.prog.expr(*expr_id);
+                    apply_op!(unary -, self.eval_arith_expr(expr))
                 }
             },
+            ThirArithExprKind::BinOp(op, lhs_id, rhs_id) => {
+                let lhs = self.prog.expr(*lhs_id);
+                let rhs = self.prog.expr(*rhs_id);
+                match op {
+                    BinOp::Add => {
+                        apply_op!(arith+, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                    }
+                    BinOp::Sub => {
+                        apply_op!(arith -, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                    }
+                    BinOp::Mul => {
+                        apply_op!(arith *, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                    }
+                    BinOp::Div => {
+                        apply_op!(arith /, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                    }
+                    BinOp::Lt => {
+                        apply_op!(compare <, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                    }
+                    BinOp::Gt => {
+                        apply_op!(compare >, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                    }
+                    BinOp::Le => {
+                        apply_op!(compare <=, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                    }
+                    BinOp::Ge => {
+                        apply_op!(compare >=, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                    }
+                    BinOp::Eq => {
+                        apply_op!(equal ==, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                    }
+                    BinOp::Ne => {
+                        apply_op!(equal !=, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                    }
+                }
+            }
         }
     }
 
@@ -203,7 +213,10 @@ impl State<'_> {
             ThirPrimaryExprKind::Var(var) => self.eval_var(&*var),
             ThirPrimaryExprKind::Const(cst) => self.eval_cst(&*cst),
             ThirPrimaryExprKind::FnCall(fncall) => self.eval_fncall(&*fncall),
-            ThirPrimaryExprKind::Paren(expr) => self.eval_arith_expr(&*expr),
+            ThirPrimaryExprKind::Paren(expr_id) => {
+                let expr = self.prog.expr(*expr_id);
+                self.eval_arith_expr(&*expr)
+            }
         }
     }
 
@@ -218,9 +231,12 @@ impl State<'_> {
     fn eval_fncall(&self, fncall: &ThirFnCall) -> Value {
         let mut state = State::new_for(self.prog, fncall.res);
         let args = fncall
-            .args
+            .arg_ids
             .iter()
-            .map(|arg| self.eval_arith_expr(arg))
+            .map(|&arg_id| {
+                let arg = self.prog.expr(arg_id);
+                self.eval_arith_expr(arg)
+            })
             .collect_vec();
         state.run_fn(args)
     }

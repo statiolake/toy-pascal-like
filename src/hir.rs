@@ -17,6 +17,9 @@ pub struct VarId(usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StmtId(usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ExprId(usize);
+
 #[derive(Debug)]
 pub struct ItemIdGenerator {
     current: usize,
@@ -43,6 +46,10 @@ impl ItemIdGenerator {
         StmtId(self.next_id())
     }
 
+    pub fn gen_expr(&mut self) -> ExprId {
+        ExprId(self.next_id())
+    }
+
     fn next_id(&mut self) -> usize {
         let id = self.current;
         self.current += 1;
@@ -63,6 +70,7 @@ pub struct HirProgram {
     pub fndecls: BTreeMap<FnId, HirFnDecl>,
     pub fnbodies: BTreeMap<FnId, HirFnBody>,
     pub stmts: BTreeMap<StmtId, HirStmt>,
+    pub exprs: BTreeMap<ExprId, HirArithExpr>,
 }
 
 impl HirProgram {
@@ -90,6 +98,12 @@ impl HirProgram {
             .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
     }
 
+    pub fn expr(&self, id: ExprId) -> &HirArithExpr {
+        self.exprs
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
+    }
+
     pub fn scope_mut(&mut self, id: ScopeId) -> &mut HirScope {
         self.scopes
             .get_mut(&id)
@@ -112,6 +126,12 @@ impl HirProgram {
         self.stmts
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
+    }
+
+    pub fn expr_mut(&mut self, id: ExprId) -> &mut HirArithExpr {
+        self.exprs
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
     }
 }
 
@@ -335,7 +355,7 @@ impl From<HirIfStmt> for HirStmt {
 #[derive(Debug)]
 pub struct HirIfStmt {
     pub span: Span,
-    pub cond: Box<HirArithExpr>,
+    pub cond_id: ExprId,
     pub then_id: StmtId,
     pub otherwise_id: Option<StmtId>,
 }
@@ -343,7 +363,7 @@ pub struct HirIfStmt {
 #[derive(Debug)]
 pub struct HirWhileStmt {
     pub span: Span,
-    pub cond: Box<HirArithExpr>,
+    pub cond_id: ExprId,
     pub body_id: StmtId,
 }
 
@@ -357,7 +377,7 @@ pub struct HirBeginStmt {
 pub struct HirAssgStmt {
     pub span: Span,
     pub var: Box<HirVarRef>,
-    pub expr: Box<HirArithExpr>,
+    pub expr_id: ExprId,
 }
 
 #[derive(Debug)]
@@ -376,8 +396,8 @@ pub struct HirArithExpr {
 #[derive(Debug)]
 pub enum HirArithExprKind {
     Primary(Box<HirPrimaryExpr>),
-    UnaryOp(UnaryOp, Box<HirArithExpr>),
-    BinOp(BinOp, Box<HirArithExpr>, Box<HirArithExpr>),
+    UnaryOp(UnaryOp, ExprId),
+    BinOp(BinOp, ExprId, ExprId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -450,7 +470,7 @@ pub enum HirPrimaryExprKind {
     Var(Box<HirVarRef>),
     Const(Box<HirConst>),
     FnCall(Box<HirFnCall>),
-    Paren(Box<HirArithExpr>),
+    Paren(ExprId),
 }
 
 #[derive(Debug)]
@@ -521,5 +541,5 @@ pub struct HirFnCall {
     pub span: Span,
     pub span_name: Span,
     pub res: RefCell<ResolveStatus<FnId>>,
-    pub args: Vec<HirArithExpr>,
+    pub args: Vec<ExprId>,
 }

@@ -11,6 +11,7 @@ pub struct RhirProgram {
     pub fndecls: BTreeMap<FnId, RhirFnDecl>,
     pub fnbodies: BTreeMap<FnId, RhirFnBody>,
     pub stmts: BTreeMap<StmtId, RhirStmt>,
+    pub exprs: BTreeMap<ExprId, RhirArithExpr>,
 }
 
 impl RhirProgram {
@@ -38,6 +39,12 @@ impl RhirProgram {
             .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
     }
 
+    pub fn expr(&self, id: ExprId) -> &RhirArithExpr {
+        self.exprs
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
+    }
+
     pub fn scope_mut(&mut self, id: ScopeId) -> &mut RhirScope {
         self.scopes
             .get_mut(&id)
@@ -60,6 +67,12 @@ impl RhirProgram {
         self.stmts
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
+    }
+
+    pub fn expr_mut(&mut self, id: ExprId) -> &mut RhirArithExpr {
+        self.exprs
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
     }
 }
 
@@ -158,7 +171,7 @@ pub enum RhirStmtKind {
 #[derive(Debug)]
 pub struct RhirIfStmt {
     pub span: Span,
-    pub cond: Box<RhirArithExpr>,
+    pub cond_id: ExprId,
     pub then_id: StmtId,
     pub otherwise_id: Option<StmtId>,
 }
@@ -166,7 +179,7 @@ pub struct RhirIfStmt {
 #[derive(Debug)]
 pub struct RhirWhileStmt {
     pub span: Span,
-    pub cond: Box<RhirArithExpr>,
+    pub cond_id: ExprId,
     pub body_id: StmtId,
 }
 
@@ -180,7 +193,7 @@ pub struct RhirBeginStmt {
 pub struct RhirAssgStmt {
     pub span: Span,
     pub var: Box<RhirVarRef>,
-    pub expr: Box<RhirArithExpr>,
+    pub expr_id: ExprId,
 }
 
 #[derive(Debug)]
@@ -199,8 +212,8 @@ pub struct RhirArithExpr {
 #[derive(Debug)]
 pub enum RhirArithExprKind {
     Primary(Box<RhirPrimaryExpr>),
-    UnaryOp(UnaryOp, Box<RhirArithExpr>),
-    BinOp(BinOp, Box<RhirArithExpr>, Box<RhirArithExpr>),
+    UnaryOp(UnaryOp, ExprId),
+    BinOp(BinOp, ExprId, ExprId),
 }
 
 #[derive(Debug)]
@@ -215,7 +228,7 @@ pub enum RhirPrimaryExprKind {
     Var(Box<RhirVarRef>),
     Const(Box<RhirConst>),
     FnCall(Box<RhirFnCall>),
-    Paren(Box<RhirArithExpr>),
+    Paren(ExprId),
 }
 
 #[derive(Debug)]
@@ -236,5 +249,5 @@ pub struct RhirFnCall {
     pub span: Span,
     pub span_name: Span,
     pub res: FnId,
-    pub args: Vec<RhirArithExpr>,
+    pub arg_ids: Vec<ExprId>,
 }
