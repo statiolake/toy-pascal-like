@@ -162,7 +162,6 @@ impl State<'_> {
 
     fn eval_arith_expr(&self, stmt: &ThirArithExpr) -> Value {
         match &stmt.kind {
-            ThirArithExprKind::Primary(e) => self.eval_primary_expr(e),
             ThirArithExprKind::UnaryOp(op, expr_id) => match op {
                 UnaryOp::Neg => {
                     let expr = self.prog.expr(*expr_id);
@@ -205,15 +204,10 @@ impl State<'_> {
                     }
                 }
             }
-        }
-    }
-
-    fn eval_primary_expr(&self, stmt: &ThirPrimaryExpr) -> Value {
-        match &stmt.kind {
-            ThirPrimaryExprKind::Var(var) => self.eval_var(&*var),
-            ThirPrimaryExprKind::Const(cst) => self.eval_cst(&*cst),
-            ThirPrimaryExprKind::FnCall(fncall) => self.eval_fncall(&*fncall),
-            ThirPrimaryExprKind::Paren(expr_id) => {
+            ThirArithExprKind::Var(var) => self.eval_var(&*var),
+            ThirArithExprKind::Const(cst) => self.eval_cst(&*cst),
+            ThirArithExprKind::FnCall(fncall) => self.eval_fncall(&*fncall),
+            ThirArithExprKind::Paren(expr_id) => {
                 let expr = self.prog.expr(*expr_id);
                 self.eval_arith_expr(&*expr)
             }

@@ -466,31 +466,24 @@ impl LoweringContext {
         scope_id: ScopeId,
         expr: &Ast<AstUnaryExpr>,
     ) -> ExprId {
-        let expr = match &expr.ast {
-            AstUnaryExpr::PrimaryExpr(e) => HirArithExpr {
-                span: expr.span,
-                ty: HirTy {
+        match &expr.ast {
+            AstUnaryExpr::PrimaryExpr(e) => self.lower_primary_expr(fn_id, scope_id, &e),
+            AstUnaryExpr::Neg(e) => {
+                let expr = HirArithExpr {
                     span: expr.span,
-                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
-                },
-                kind: HirArithExprKind::Primary(Box::new(
-                    self.lower_primary_expr(fn_id, scope_id, &e),
-                )),
-            },
-            AstUnaryExpr::Neg(e) => HirArithExpr {
-                span: expr.span,
-                ty: HirTy {
-                    span: expr.span,
-                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
-                },
-                kind: HirArithExprKind::UnaryOp(
-                    UnaryOp::Neg,
-                    self.lower_unary_expr(fn_id, scope_id, &e),
-                ),
-            },
-        };
+                    ty: HirTy {
+                        span: expr.span,
+                        res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
+                    },
+                    kind: HirArithExprKind::UnaryOp(
+                        UnaryOp::Neg,
+                        self.lower_unary_expr(fn_id, scope_id, &e),
+                    ),
+                };
 
-        self.register_expr(expr)
+                self.register_expr(expr)
+            }
+        }
     }
 
     fn lower_primary_expr(
@@ -498,8 +491,8 @@ impl LoweringContext {
         fn_id: FnId,
         scope_id: ScopeId,
         expr: &Ast<AstPrimaryExpr>,
-    ) -> HirPrimaryExpr {
-        HirPrimaryExpr {
+    ) -> ExprId {
+        let expr = HirArithExpr {
             span: expr.span,
             ty: HirTy {
                 span: expr.span,
@@ -507,19 +500,21 @@ impl LoweringContext {
             },
             kind: match &expr.ast {
                 AstPrimaryExpr::Var(var) => {
-                    HirPrimaryExprKind::Var(Box::new(self.lower_var(fn_id, scope_id, var, false)))
+                    HirArithExprKind::Var(Box::new(self.lower_var(fn_id, scope_id, var, false)))
                 }
                 AstPrimaryExpr::Const(cst) => {
-                    HirPrimaryExprKind::Const(Box::new(self.lower_const(fn_id, scope_id, cst)))
+                    HirArithExprKind::Const(Box::new(self.lower_const(fn_id, scope_id, cst)))
                 }
                 AstPrimaryExpr::FnCall(call) => {
-                    HirPrimaryExprKind::FnCall(Box::new(self.lower_fncall(fn_id, scope_id, call)))
+                    HirArithExprKind::FnCall(Box::new(self.lower_fncall(fn_id, scope_id, call)))
                 }
                 AstPrimaryExpr::Paren(expr) => {
-                    HirPrimaryExprKind::Paren(self.lower_arith_expr(fn_id, scope_id, expr))
+                    HirArithExprKind::Paren(self.lower_arith_expr(fn_id, scope_id, expr))
                 }
             },
-        }
+        };
+
+        self.register_expr(expr)
     }
 
     fn lower_fncall(&mut self, fn_id: FnId, scope_id: ScopeId, call: &Ast<AstFnCall>) -> HirFnCall {

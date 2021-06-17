@@ -61,10 +61,6 @@ pub trait Visit {
         visit_arith_expr(self, prog, expr);
     }
 
-    fn visit_primary_expr(&mut self, prog: &HirProgram, expr: &HirPrimaryExpr) {
-        visit_primary_expr(self, prog, expr);
-    }
-
     fn visit_fncall(&mut self, prog: &HirProgram, fncall: &HirFnCall) {
         visit_fncall(self, prog, fncall);
     }
@@ -176,7 +172,6 @@ pub fn visit_dump_stmt<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, stmt: &H
 
 pub fn visit_arith_expr<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, expr: &HirArithExpr) {
     match &expr.kind {
-        HirArithExprKind::Primary(e) => v.visit_primary_expr(prog, e),
         HirArithExprKind::UnaryOp(_, id) => {
             let expr = prog.expr(*id);
             v.visit_arith_expr(prog, expr)
@@ -187,15 +182,10 @@ pub fn visit_arith_expr<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, expr: &
             v.visit_arith_expr(prog, lhs);
             v.visit_arith_expr(prog, rhs);
         }
-    }
-}
-
-pub fn visit_primary_expr<V: Visit + ?Sized>(v: &mut V, prog: &HirProgram, expr: &HirPrimaryExpr) {
-    match &expr.kind {
-        HirPrimaryExprKind::Var(var) => v.visit_var_ref(prog, var),
-        HirPrimaryExprKind::Const(cst) => v.visit_const(prog, cst),
-        HirPrimaryExprKind::FnCall(fncall) => v.visit_fncall(prog, fncall),
-        HirPrimaryExprKind::Paren(expr_id) => {
+        HirArithExprKind::Var(var) => v.visit_var_ref(prog, var),
+        HirArithExprKind::Const(cst) => v.visit_const(prog, cst),
+        HirArithExprKind::FnCall(fncall) => v.visit_fncall(prog, fncall),
+        HirArithExprKind::Paren(expr_id) => {
             let expr = prog.expr(*expr_id);
             v.visit_arith_expr(prog, expr)
         }

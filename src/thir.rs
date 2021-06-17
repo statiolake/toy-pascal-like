@@ -214,20 +214,8 @@ pub struct ThirArithExpr {
 
 #[derive(Debug)]
 pub enum ThirArithExprKind {
-    Primary(Box<ThirPrimaryExpr>),
     UnaryOp(UnaryOp, ExprId),
     BinOp(BinOp, ExprId, ExprId),
-}
-
-#[derive(Debug)]
-pub struct ThirPrimaryExpr {
-    pub span: Span,
-    pub ty: ThirTy,
-    pub kind: ThirPrimaryExprKind,
-}
-
-#[derive(Debug)]
-pub enum ThirPrimaryExprKind {
     Var(Box<ThirVarRef>),
     Const(Box<ThirConst>),
     FnCall(Box<ThirFnCall>),

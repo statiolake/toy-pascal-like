@@ -217,20 +217,8 @@ pub struct RhirArithExpr {
 
 #[derive(Debug)]
 pub enum RhirArithExprKind {
-    Primary(Box<RhirPrimaryExpr>),
     UnaryOp(UnaryOp, ExprId),
     BinOp(BinOp, ExprId, ExprId),
-}
-
-#[derive(Debug)]
-pub struct RhirPrimaryExpr {
-    pub span: Span,
-    pub ty: RhirTy,
-    pub kind: RhirPrimaryExprKind,
-}
-
-#[derive(Debug)]
-pub enum RhirPrimaryExprKind {
     Var(Box<RhirVarRef>),
     Const(Box<RhirConst>),
     FnCall(Box<RhirFnCall>),

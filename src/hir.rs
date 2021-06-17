@@ -395,9 +395,12 @@ pub struct HirArithExpr {
 
 #[derive(Debug)]
 pub enum HirArithExprKind {
-    Primary(Box<HirPrimaryExpr>),
     UnaryOp(UnaryOp, ExprId),
     BinOp(BinOp, ExprId, ExprId),
+    Var(Box<HirVarRef>),
+    Const(Box<HirConst>),
+    FnCall(Box<HirFnCall>),
+    Paren(ExprId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -456,21 +459,6 @@ impl fmt::Display for BinOp {
             BinOp::Ne => write!(b, "!="),
         }
     }
-}
-
-#[derive(Debug)]
-pub struct HirPrimaryExpr {
-    pub span: Span,
-    pub ty: HirTy,
-    pub kind: HirPrimaryExprKind,
-}
-
-#[derive(Debug)]
-pub enum HirPrimaryExprKind {
-    Var(Box<HirVarRef>),
-    Const(Box<HirConst>),
-    FnCall(Box<HirFnCall>),
-    Paren(ExprId),
 }
 
 #[derive(Debug)]

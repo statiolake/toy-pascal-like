@@ -638,33 +638,21 @@ impl Resolver {
             let HirArithExpr { span, ty, kind } = expr;
             let ty = convert_ty(ty);
             let kind = match kind {
-                HirArithExprKind::Primary(e) => {
-                    RhirArithExprKind::Primary(Box::new(convert_primary_expr(*e)))
+                HirArithExprKind::Var(var) => {
+                    RhirArithExprKind::Var(Box::new(convert_var_ref(*var)))
                 }
+                HirArithExprKind::Const(cst) => {
+                    RhirArithExprKind::Const(Box::new(convert_const(*cst)))
+                }
+                HirArithExprKind::FnCall(fncall) => {
+                    RhirArithExprKind::FnCall(Box::new(convert_fncall(*fncall)))
+                }
+                HirArithExprKind::Paren(expr) => RhirArithExprKind::Paren(expr),
                 HirArithExprKind::UnaryOp(op, e) => RhirArithExprKind::UnaryOp(op, e),
                 HirArithExprKind::BinOp(op, lhs, rhs) => RhirArithExprKind::BinOp(op, lhs, rhs),
             };
 
             RhirArithExpr { span, ty, kind }
-        }
-
-        fn convert_primary_expr(expr: HirPrimaryExpr) -> RhirPrimaryExpr {
-            let HirPrimaryExpr { span, ty, kind } = expr;
-            let ty = convert_ty(ty);
-            let kind = match kind {
-                HirPrimaryExprKind::Var(var) => {
-                    RhirPrimaryExprKind::Var(Box::new(convert_var_ref(*var)))
-                }
-                HirPrimaryExprKind::Const(cst) => {
-                    RhirPrimaryExprKind::Const(Box::new(convert_const(*cst)))
-                }
-                HirPrimaryExprKind::FnCall(fncall) => {
-                    RhirPrimaryExprKind::FnCall(Box::new(convert_fncall(*fncall)))
-                }
-                HirPrimaryExprKind::Paren(expr) => RhirPrimaryExprKind::Paren(expr),
-            };
-
-            RhirPrimaryExpr { span, ty, kind }
         }
 
         fn convert_fncall(fncall: HirFnCall) -> RhirFnCall {
