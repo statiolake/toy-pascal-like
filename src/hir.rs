@@ -376,14 +376,14 @@ pub struct HirBeginStmt {
 #[derive(Debug)]
 pub struct HirAssgStmt {
     pub span: Span,
-    pub var: Box<HirVarRef>,
+    pub var: HirVarRef,
     pub expr_id: ExprId,
 }
 
 #[derive(Debug)]
 pub struct HirDumpStmt {
     pub span: Span,
-    pub var: Box<HirVarRef>,
+    pub var: HirVarRef,
 }
 
 #[derive(Debug)]
@@ -397,9 +397,9 @@ pub struct HirExpr {
 pub enum HirExprKind {
     UnaryOp(UnaryOp, ExprId),
     BinOp(BinOp, ExprId, ExprId),
-    Var(Box<HirVarRef>),
-    Const(Box<HirConst>),
-    FnCall(Box<HirFnCall>),
+    Var(HirVarRef),
+    Const(HirConst),
+    FnCall(HirFnCall),
     Paren(ExprId),
 }
 

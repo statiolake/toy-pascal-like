@@ -195,14 +195,14 @@ pub struct ThirBeginStmt {
 #[derive(Debug)]
 pub struct ThirAssgStmt {
     pub span: Span,
-    pub var: Box<ThirVarRef>,
+    pub var: ThirVarRef,
     pub expr_id: ExprId,
 }
 
 #[derive(Debug)]
 pub struct ThirDumpStmt {
     pub span: Span,
-    pub var: Box<ThirVarRef>,
+    pub var: ThirVarRef,
 }
 
 #[derive(Debug)]
@@ -216,9 +216,9 @@ pub struct ThirExpr {
 pub enum ThirExprKind {
     UnaryOp(UnaryOp, ExprId),
     BinOp(BinOp, ExprId, ExprId),
-    Var(Box<ThirVarRef>),
-    Const(Box<ThirConst>),
-    FnCall(Box<ThirFnCall>),
+    Var(ThirVarRef),
+    Const(ThirConst),
+    FnCall(ThirFnCall),
     Paren(ExprId),
 }
 

@@ -351,7 +351,7 @@ impl LoweringContext {
     ) -> HirAssgStmt {
         HirAssgStmt {
             span: stmt.span,
-            var: Box::new(self.lower_var(fn_id, scope_id, &stmt.ast.var, true)),
+            var: (self.lower_var(fn_id, scope_id, &stmt.ast.var, true)),
             expr_id: self.lower_expr(fn_id, scope_id, &stmt.ast.expr),
         }
     }
@@ -364,7 +364,7 @@ impl LoweringContext {
     ) -> HirDumpStmt {
         HirDumpStmt {
             span: stmt.span,
-            var: Box::new(self.lower_var(fn_id, scope_id, &stmt.ast.var, false)),
+            var: (self.lower_var(fn_id, scope_id, &stmt.ast.var, false)),
         }
     }
 
@@ -495,13 +495,13 @@ impl LoweringContext {
             },
             kind: match &expr.ast {
                 AstPrimaryExpr::Var(var) => {
-                    HirExprKind::Var(Box::new(self.lower_var(fn_id, scope_id, var, false)))
+                    HirExprKind::Var(self.lower_var(fn_id, scope_id, var, false))
                 }
                 AstPrimaryExpr::Const(cst) => {
-                    HirExprKind::Const(Box::new(self.lower_const(fn_id, scope_id, cst)))
+                    HirExprKind::Const(self.lower_const(fn_id, scope_id, cst))
                 }
                 AstPrimaryExpr::FnCall(call) => {
-                    HirExprKind::FnCall(Box::new(self.lower_fncall(fn_id, scope_id, call)))
+                    HirExprKind::FnCall(self.lower_fncall(fn_id, scope_id, call))
                 }
                 AstPrimaryExpr::Paren(expr) => {
                     HirExprKind::Paren(self.lower_expr(fn_id, scope_id, expr))

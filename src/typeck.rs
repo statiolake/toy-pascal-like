@@ -560,14 +560,14 @@ impl TypeChecker {
 
         fn convert_assg_stmt(stmt: RhirAssgStmt) -> ThirAssgStmt {
             let RhirAssgStmt { span, var, expr_id } = stmt;
-            let var = Box::new(convert_var_ref(*var));
+            let var = convert_var_ref(var);
 
             ThirAssgStmt { span, var, expr_id }
         }
 
         fn convert_dump_stmt(stmt: RhirDumpStmt) -> ThirDumpStmt {
             let RhirDumpStmt { span, var } = stmt;
-            let var = Box::new(convert_var_ref(*var));
+            let var = convert_var_ref(var);
 
             ThirDumpStmt { span, var }
         }
@@ -578,11 +578,9 @@ impl TypeChecker {
             let kind = match kind {
                 RhirExprKind::UnaryOp(op, e) => ThirExprKind::UnaryOp(op, e),
                 RhirExprKind::BinOp(op, lhs, rhs) => ThirExprKind::BinOp(op, lhs, rhs),
-                RhirExprKind::Var(var) => ThirExprKind::Var(Box::new(convert_var_ref(*var))),
-                RhirExprKind::Const(cst) => ThirExprKind::Const(Box::new(convert_const(*cst))),
-                RhirExprKind::FnCall(fncall) => {
-                    ThirExprKind::FnCall(Box::new(convert_fncall(*fncall)))
-                }
+                RhirExprKind::Var(var) => ThirExprKind::Var(convert_var_ref(var)),
+                RhirExprKind::Const(cst) => ThirExprKind::Const(convert_const(cst)),
+                RhirExprKind::FnCall(fncall) => ThirExprKind::FnCall(convert_fncall(fncall)),
                 RhirExprKind::Paren(expr) => ThirExprKind::Paren(expr),
             };
 

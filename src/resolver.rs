@@ -380,7 +380,7 @@ impl Resolver {
                 // of asignee.
                 let expr = prog.expr(stmt.expr_id);
                 self.visit_expr(prog, expr);
-                if let Err(err) = self.resolve_var_ref(prog, &*stmt.var, true) {
+                if let Err(err) = self.resolve_var_ref(prog, &stmt.var, true) {
                     self.errors.push(err);
                     return;
                 }
@@ -624,13 +624,13 @@ impl Resolver {
 
         fn convert_assg_stmt(stmt: HirAssgStmt) -> RhirAssgStmt {
             let HirAssgStmt { span, var, expr_id } = stmt;
-            let var = Box::new(convert_var_ref(*var));
+            let var = convert_var_ref(var);
             RhirAssgStmt { span, var, expr_id }
         }
 
         fn convert_dump_stmt(stmt: HirDumpStmt) -> RhirDumpStmt {
             let HirDumpStmt { span, var } = stmt;
-            let var = Box::new(convert_var_ref(*var));
+            let var = convert_var_ref(var);
             RhirDumpStmt { span, var }
         }
 
@@ -638,11 +638,9 @@ impl Resolver {
             let HirExpr { span, ty, kind } = expr;
             let ty = convert_ty(ty);
             let kind = match kind {
-                HirExprKind::Var(var) => RhirExprKind::Var(Box::new(convert_var_ref(*var))),
-                HirExprKind::Const(cst) => RhirExprKind::Const(Box::new(convert_const(*cst))),
-                HirExprKind::FnCall(fncall) => {
-                    RhirExprKind::FnCall(Box::new(convert_fncall(*fncall)))
-                }
+                HirExprKind::Var(var) => RhirExprKind::Var(convert_var_ref(var)),
+                HirExprKind::Const(cst) => RhirExprKind::Const(convert_const(cst)),
+                HirExprKind::FnCall(fncall) => RhirExprKind::FnCall(convert_fncall(fncall)),
                 HirExprKind::Paren(expr) => RhirExprKind::Paren(expr),
                 HirExprKind::UnaryOp(op, e) => RhirExprKind::UnaryOp(op, e),
                 HirExprKind::BinOp(op, lhs, rhs) => RhirExprKind::BinOp(op, lhs, rhs),

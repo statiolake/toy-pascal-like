@@ -198,14 +198,14 @@ pub struct RhirBeginStmt {
 #[derive(Debug)]
 pub struct RhirAssgStmt {
     pub span: Span,
-    pub var: Box<RhirVarRef>,
+    pub var: RhirVarRef,
     pub expr_id: ExprId,
 }
 
 #[derive(Debug)]
 pub struct RhirDumpStmt {
     pub span: Span,
-    pub var: Box<RhirVarRef>,
+    pub var: RhirVarRef,
 }
 
 #[derive(Debug)]
@@ -219,9 +219,9 @@ pub struct RhirExpr {
 pub enum RhirExprKind {
     UnaryOp(UnaryOp, ExprId),
     BinOp(BinOp, ExprId, ExprId),
-    Var(Box<RhirVarRef>),
-    Const(Box<RhirConst>),
-    FnCall(Box<RhirFnCall>),
+    Var(RhirVarRef),
+    Const(RhirConst),
+    FnCall(RhirFnCall),
     Paren(ExprId),
 }
 
