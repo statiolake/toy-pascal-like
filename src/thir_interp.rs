@@ -124,7 +124,7 @@ impl State<'_> {
 
     fn run_if_stmt(&mut self, stmt: &ThirIfStmt) {
         let cond = self.prog.expr(stmt.cond_id);
-        if self.eval_arith_expr(cond).unwrap_bool() {
+        if self.eval_expr(cond).unwrap_bool() {
             let then = self.prog.stmt(stmt.then_id);
             self.run_stmt(then);
         } else if let Some(otherwise_id) = stmt.otherwise_id {
@@ -136,7 +136,7 @@ impl State<'_> {
     fn run_while_stmt(&mut self, stmt: &ThirWhileStmt) {
         let cond = self.prog.expr(stmt.cond_id);
         let body = self.prog.stmt(stmt.body_id);
-        while self.eval_arith_expr(cond).unwrap_bool() {
+        while self.eval_expr(cond).unwrap_bool() {
             self.run_stmt(body);
         }
     }
@@ -150,7 +150,7 @@ impl State<'_> {
 
     fn run_assg_stmt(&mut self, stmt: &ThirAssgStmt) {
         let expr = self.prog.expr(stmt.expr_id);
-        *self.vars.get_mut(&stmt.var.res).unwrap() = Some(self.eval_arith_expr(expr));
+        *self.vars.get_mut(&stmt.var.res).unwrap() = Some(self.eval_expr(expr));
     }
 
     fn run_dump_stmt(&mut self, stmt: &ThirDumpStmt) {
@@ -160,56 +160,56 @@ impl State<'_> {
         println!("{} = {}", var.name.ident, value.as_ref().unwrap());
     }
 
-    fn eval_arith_expr(&self, stmt: &ThirArithExpr) -> Value {
+    fn eval_expr(&self, stmt: &ThirExpr) -> Value {
         match &stmt.kind {
-            ThirArithExprKind::UnaryOp(op, expr_id) => match op {
+            ThirExprKind::UnaryOp(op, expr_id) => match op {
                 UnaryOp::Neg => {
                     let expr = self.prog.expr(*expr_id);
-                    apply_op!(unary -, self.eval_arith_expr(expr))
+                    apply_op!(unary -, self.eval_expr(expr))
                 }
             },
-            ThirArithExprKind::BinOp(op, lhs_id, rhs_id) => {
+            ThirExprKind::BinOp(op, lhs_id, rhs_id) => {
                 let lhs = self.prog.expr(*lhs_id);
                 let rhs = self.prog.expr(*rhs_id);
                 match op {
                     BinOp::Add => {
-                        apply_op!(arith+, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                        apply_op!(arith+, self.eval_expr(lhs), self.eval_expr(rhs))
                     }
                     BinOp::Sub => {
-                        apply_op!(arith -, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                        apply_op!(arith -, self.eval_expr(lhs), self.eval_expr(rhs))
                     }
                     BinOp::Mul => {
-                        apply_op!(arith *, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                        apply_op!(arith *, self.eval_expr(lhs), self.eval_expr(rhs))
                     }
                     BinOp::Div => {
-                        apply_op!(arith /, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                        apply_op!(arith /, self.eval_expr(lhs), self.eval_expr(rhs))
                     }
                     BinOp::Lt => {
-                        apply_op!(compare <, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                        apply_op!(compare <, self.eval_expr(lhs), self.eval_expr(rhs))
                     }
                     BinOp::Gt => {
-                        apply_op!(compare >, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                        apply_op!(compare >, self.eval_expr(lhs), self.eval_expr(rhs))
                     }
                     BinOp::Le => {
-                        apply_op!(compare <=, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                        apply_op!(compare <=, self.eval_expr(lhs), self.eval_expr(rhs))
                     }
                     BinOp::Ge => {
-                        apply_op!(compare >=, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                        apply_op!(compare >=, self.eval_expr(lhs), self.eval_expr(rhs))
                     }
                     BinOp::Eq => {
-                        apply_op!(equal ==, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                        apply_op!(equal ==, self.eval_expr(lhs), self.eval_expr(rhs))
                     }
                     BinOp::Ne => {
-                        apply_op!(equal !=, self.eval_arith_expr(lhs), self.eval_arith_expr(rhs))
+                        apply_op!(equal !=, self.eval_expr(lhs), self.eval_expr(rhs))
                     }
                 }
             }
-            ThirArithExprKind::Var(var) => self.eval_var(&*var),
-            ThirArithExprKind::Const(cst) => self.eval_cst(&*cst),
-            ThirArithExprKind::FnCall(fncall) => self.eval_fncall(&*fncall),
-            ThirArithExprKind::Paren(expr_id) => {
+            ThirExprKind::Var(var) => self.eval_var(&*var),
+            ThirExprKind::Const(cst) => self.eval_cst(&*cst),
+            ThirExprKind::FnCall(fncall) => self.eval_fncall(&*fncall),
+            ThirExprKind::Paren(expr_id) => {
                 let expr = self.prog.expr(*expr_id);
-                self.eval_arith_expr(&*expr)
+                self.eval_expr(&*expr)
             }
         }
     }
@@ -229,7 +229,7 @@ impl State<'_> {
             .iter()
             .map(|&arg_id| {
                 let arg = self.prog.expr(arg_id);
-                self.eval_arith_expr(arg)
+                self.eval_expr(arg)
             })
             .collect_vec();
         state.run_fn(args)

@@ -244,12 +244,12 @@ impl TypeChecker {
                 *var.ty.res.borrow_mut() = TypeckStatus::Revealed(lt);
             }
 
-            fn visit_arith_expr(&mut self, prog: &RhirProgram, expr: &RhirArithExpr) {
-                rhir_visit::visit_arith_expr(self, prog, expr);
+            fn visit_expr(&mut self, prog: &RhirProgram, expr: &RhirExpr) {
+                rhir_visit::visit_expr(self, prog, expr);
 
                 *expr.ty.res.borrow_mut() = TypeckStatus::Err;
                 match &expr.kind {
-                    RhirArithExprKind::UnaryOp(op, inner_expr_id) => {
+                    RhirExprKind::UnaryOp(op, inner_expr_id) => {
                         let inner_expr = prog.expr(*inner_expr_id);
                         let ty = match inner_expr.ty.res.borrow().clone() {
                             TypeckStatus::Infer => panic_not_inferred!(),
@@ -265,7 +265,7 @@ impl TypeChecker {
                         };
                         *expr.ty.res.borrow_mut() = TypeckStatus::Revealed(ret_ty);
                     }
-                    RhirArithExprKind::BinOp(op, lhs_id, rhs_id) => {
+                    RhirExprKind::BinOp(op, lhs_id, rhs_id) => {
                         let lhs = prog.expr(*lhs_id);
                         let lt = match lhs.ty.res.borrow().clone() {
                             TypeckStatus::Infer => panic_not_inferred!(),
@@ -288,18 +288,18 @@ impl TypeChecker {
                         };
                         *expr.ty.res.borrow_mut() = TypeckStatus::Revealed(ret_ty);
                     }
-                    RhirArithExprKind::Var(v) => {
+                    RhirExprKind::Var(v) => {
                         let var = self.prog.scope(self.scope_id).var(v.res);
                         *expr.ty.res.borrow_mut() = var.ty.res.borrow().clone();
                     }
-                    RhirArithExprKind::Const(c) => {
+                    RhirExprKind::Const(c) => {
                         *expr.ty.res.borrow_mut() = c.ty.res.borrow().clone();
                     }
-                    RhirArithExprKind::FnCall(fc) => {
+                    RhirExprKind::FnCall(fc) => {
                         let fndecl = self.prog.fndecl(fc.res);
                         *expr.ty.res.borrow_mut() = fndecl.ret_ty.res.borrow().clone()
                     }
-                    RhirArithExprKind::Paren(inner_expr_id) => {
+                    RhirExprKind::Paren(inner_expr_id) => {
                         let inner_expr = prog.expr(*inner_expr_id);
                         *expr.ty.res.borrow_mut() = inner_expr.ty.res.borrow().clone();
                     }
@@ -407,12 +407,10 @@ impl TypeChecker {
                 .collect()
         }
 
-        fn convert_exprs(
-            exprs: BTreeMap<ExprId, RhirArithExpr>,
-        ) -> BTreeMap<ExprId, ThirArithExpr> {
+        fn convert_exprs(exprs: BTreeMap<ExprId, RhirExpr>) -> BTreeMap<ExprId, ThirExpr> {
             exprs
                 .into_iter()
-                .map(|(id, expr)| (id, convert_arith_expr(expr)))
+                .map(|(id, expr)| (id, convert_expr(expr)))
                 .collect()
         }
 
@@ -574,25 +572,21 @@ impl TypeChecker {
             ThirDumpStmt { span, var }
         }
 
-        fn convert_arith_expr(expr: RhirArithExpr) -> ThirArithExpr {
-            let RhirArithExpr { span, ty, kind } = expr;
+        fn convert_expr(expr: RhirExpr) -> ThirExpr {
+            let RhirExpr { span, ty, kind } = expr;
             let ty = convert_ty(ty);
             let kind = match kind {
-                RhirArithExprKind::UnaryOp(op, e) => ThirArithExprKind::UnaryOp(op, e),
-                RhirArithExprKind::BinOp(op, lhs, rhs) => ThirArithExprKind::BinOp(op, lhs, rhs),
-                RhirArithExprKind::Var(var) => {
-                    ThirArithExprKind::Var(Box::new(convert_var_ref(*var)))
+                RhirExprKind::UnaryOp(op, e) => ThirExprKind::UnaryOp(op, e),
+                RhirExprKind::BinOp(op, lhs, rhs) => ThirExprKind::BinOp(op, lhs, rhs),
+                RhirExprKind::Var(var) => ThirExprKind::Var(Box::new(convert_var_ref(*var))),
+                RhirExprKind::Const(cst) => ThirExprKind::Const(Box::new(convert_const(*cst))),
+                RhirExprKind::FnCall(fncall) => {
+                    ThirExprKind::FnCall(Box::new(convert_fncall(*fncall)))
                 }
-                RhirArithExprKind::Const(cst) => {
-                    ThirArithExprKind::Const(Box::new(convert_const(*cst)))
-                }
-                RhirArithExprKind::FnCall(fncall) => {
-                    ThirArithExprKind::FnCall(Box::new(convert_fncall(*fncall)))
-                }
-                RhirArithExprKind::Paren(expr) => ThirArithExprKind::Paren(expr),
+                RhirExprKind::Paren(expr) => ThirExprKind::Paren(expr),
             };
 
-            ThirArithExpr { span, ty, kind }
+            ThirExpr { span, ty, kind }
         }
 
         fn convert_fncall(fncall: RhirFnCall) -> ThirFnCall {

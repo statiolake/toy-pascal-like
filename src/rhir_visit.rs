@@ -58,8 +58,8 @@ pub trait Visit {
         visit_dump_stmt(self, prog, stmt);
     }
 
-    fn visit_arith_expr(&mut self, prog: &RhirProgram, expr: &RhirArithExpr) {
-        visit_arith_expr(self, prog, expr);
+    fn visit_expr(&mut self, prog: &RhirProgram, expr: &RhirExpr) {
+        visit_expr(self, prog, expr);
     }
 
     fn visit_fncall(&mut self, prog: &RhirProgram, fncall: &RhirFnCall) {
@@ -138,7 +138,7 @@ pub fn visit_stmt<V: Visit + ?Sized>(v: &mut V, prog: &RhirProgram, stmt: &RhirS
 
 pub fn visit_if_stmt<V: Visit + ?Sized>(v: &mut V, prog: &RhirProgram, stmt: &RhirIfStmt) {
     let cond = prog.expr(stmt.cond_id);
-    v.visit_arith_expr(prog, cond);
+    v.visit_expr(prog, cond);
     let then = prog.stmt(stmt.then_id);
     v.visit_stmt(prog, then);
     if let Some(otherwise_id) = stmt.otherwise_id {
@@ -149,7 +149,7 @@ pub fn visit_if_stmt<V: Visit + ?Sized>(v: &mut V, prog: &RhirProgram, stmt: &Rh
 
 pub fn visit_while_stmt<V: Visit + ?Sized>(v: &mut V, prog: &RhirProgram, stmt: &RhirWhileStmt) {
     let cond = prog.expr(stmt.cond_id);
-    v.visit_arith_expr(prog, cond);
+    v.visit_expr(prog, cond);
     let body = prog.stmt(stmt.body_id);
     v.visit_stmt(prog, body);
 }
@@ -164,31 +164,31 @@ pub fn visit_begin_stmt<V: Visit + ?Sized>(v: &mut V, prog: &RhirProgram, stmt: 
 pub fn visit_assg_stmt<V: Visit + ?Sized>(v: &mut V, prog: &RhirProgram, stmt: &RhirAssgStmt) {
     v.visit_var_ref(prog, &stmt.var);
     let expr = prog.expr(stmt.expr_id);
-    v.visit_arith_expr(prog, expr);
+    v.visit_expr(prog, expr);
 }
 
 pub fn visit_dump_stmt<V: Visit + ?Sized>(v: &mut V, prog: &RhirProgram, stmt: &RhirDumpStmt) {
     v.visit_var_ref(prog, &stmt.var);
 }
 
-pub fn visit_arith_expr<V: Visit + ?Sized>(v: &mut V, prog: &RhirProgram, expr: &RhirArithExpr) {
+pub fn visit_expr<V: Visit + ?Sized>(v: &mut V, prog: &RhirProgram, expr: &RhirExpr) {
     match &expr.kind {
-        RhirArithExprKind::UnaryOp(_, id) => {
+        RhirExprKind::UnaryOp(_, id) => {
             let expr = prog.expr(*id);
-            v.visit_arith_expr(prog, expr)
+            v.visit_expr(prog, expr)
         }
-        RhirArithExprKind::BinOp(_, lhs_id, rhs_id) => {
+        RhirExprKind::BinOp(_, lhs_id, rhs_id) => {
             let lhs = prog.expr(*lhs_id);
             let rhs = prog.expr(*rhs_id);
-            v.visit_arith_expr(prog, lhs);
-            v.visit_arith_expr(prog, rhs);
+            v.visit_expr(prog, lhs);
+            v.visit_expr(prog, rhs);
         }
-        RhirArithExprKind::Var(var) => v.visit_var_ref(prog, var),
-        RhirArithExprKind::Const(cst) => v.visit_const(prog, cst),
-        RhirArithExprKind::FnCall(fncall) => v.visit_fncall(prog, fncall),
-        RhirArithExprKind::Paren(expr_id) => {
+        RhirExprKind::Var(var) => v.visit_var_ref(prog, var),
+        RhirExprKind::Const(cst) => v.visit_const(prog, cst),
+        RhirExprKind::FnCall(fncall) => v.visit_fncall(prog, fncall),
+        RhirExprKind::Paren(expr_id) => {
             let expr = prog.expr(*expr_id);
-            v.visit_arith_expr(prog, expr)
+            v.visit_expr(prog, expr)
         }
     }
 }
@@ -200,6 +200,6 @@ pub fn visit_const<V: Visit + ?Sized>(_v: &mut V, _prog: &RhirProgram, _cst: &Rh
 pub fn visit_fncall<V: Visit + ?Sized>(v: &mut V, prog: &RhirProgram, fncall: &RhirFnCall) {
     for arg_id in &fncall.arg_ids {
         let arg = prog.expr(*arg_id);
-        v.visit_arith_expr(prog, arg);
+        v.visit_expr(prog, arg);
     }
 }

@@ -10,7 +10,7 @@ pub struct ThirProgram {
     pub fndecls: BTreeMap<FnId, ThirFnDecl>,
     pub fnbodies: BTreeMap<FnId, ThirFnBody>,
     pub stmts: BTreeMap<StmtId, ThirStmt>,
-    pub exprs: BTreeMap<ExprId, ThirArithExpr>,
+    pub exprs: BTreeMap<ExprId, ThirExpr>,
 }
 
 impl ThirProgram {
@@ -38,7 +38,7 @@ impl ThirProgram {
             .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
     }
 
-    pub fn expr(&self, id: ExprId) -> &ThirArithExpr {
+    pub fn expr(&self, id: ExprId) -> &ThirExpr {
         self.exprs
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
@@ -68,7 +68,7 @@ impl ThirProgram {
             .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
     }
 
-    pub fn expr_mut(&mut self, id: ExprId) -> &mut ThirArithExpr {
+    pub fn expr_mut(&mut self, id: ExprId) -> &mut ThirExpr {
         self.exprs
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
@@ -206,14 +206,14 @@ pub struct ThirDumpStmt {
 }
 
 #[derive(Debug)]
-pub struct ThirArithExpr {
+pub struct ThirExpr {
     pub span: Span,
     pub ty: ThirTy,
-    pub kind: ThirArithExprKind,
+    pub kind: ThirExprKind,
 }
 
 #[derive(Debug)]
-pub enum ThirArithExprKind {
+pub enum ThirExprKind {
     UnaryOp(UnaryOp, ExprId),
     BinOp(BinOp, ExprId, ExprId),
     Var(Box<ThirVarRef>),

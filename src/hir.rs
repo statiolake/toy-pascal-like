@@ -70,7 +70,7 @@ pub struct HirProgram {
     pub fndecls: BTreeMap<FnId, HirFnDecl>,
     pub fnbodies: BTreeMap<FnId, HirFnBody>,
     pub stmts: BTreeMap<StmtId, HirStmt>,
-    pub exprs: BTreeMap<ExprId, HirArithExpr>,
+    pub exprs: BTreeMap<ExprId, HirExpr>,
 }
 
 impl HirProgram {
@@ -98,7 +98,7 @@ impl HirProgram {
             .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
     }
 
-    pub fn expr(&self, id: ExprId) -> &HirArithExpr {
+    pub fn expr(&self, id: ExprId) -> &HirExpr {
         self.exprs
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
@@ -128,7 +128,7 @@ impl HirProgram {
             .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
     }
 
-    pub fn expr_mut(&mut self, id: ExprId) -> &mut HirArithExpr {
+    pub fn expr_mut(&mut self, id: ExprId) -> &mut HirExpr {
         self.exprs
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
@@ -387,14 +387,14 @@ pub struct HirDumpStmt {
 }
 
 #[derive(Debug)]
-pub struct HirArithExpr {
+pub struct HirExpr {
     pub span: Span,
     pub ty: HirTy,
-    pub kind: HirArithExprKind,
+    pub kind: HirExprKind,
 }
 
 #[derive(Debug)]
-pub enum HirArithExprKind {
+pub enum HirExprKind {
     UnaryOp(UnaryOp, ExprId),
     BinOp(BinOp, ExprId, ExprId),
     Var(Box<HirVarRef>),

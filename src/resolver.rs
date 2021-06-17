@@ -344,7 +344,7 @@ impl Resolver {
 
             fn visit_if_stmt(&mut self, prog: &HirProgram, stmt: &HirIfStmt) {
                 let cond = prog.expr(stmt.cond_id);
-                self.visit_arith_expr(prog, cond);
+                self.visit_expr(prog, cond);
 
                 // if stmt may create "possibly uninitialized variables".
                 let init_vars = self.init_vars.clone();
@@ -369,7 +369,7 @@ impl Resolver {
                 // the loop body is not necessarily run.
                 let init_vars = self.init_vars.clone();
                 let cond = prog.expr(stmt.cond_id);
-                self.visit_arith_expr(prog, cond);
+                self.visit_expr(prog, cond);
                 let body = prog.stmt(stmt.body_id);
                 self.visit_stmt(prog, body);
                 self.init_vars = init_vars;
@@ -379,7 +379,7 @@ impl Resolver {
                 // We can't use hir_visit::visit_assg_stmt(), since that will try to resolve var_ref
                 // of asignee.
                 let expr = prog.expr(stmt.expr_id);
-                self.visit_arith_expr(prog, expr);
+                self.visit_expr(prog, expr);
                 if let Err(err) = self.resolve_var_ref(prog, &*stmt.var, true) {
                     self.errors.push(err);
                     return;
@@ -466,10 +466,10 @@ impl Resolver {
                 .collect()
         }
 
-        fn convert_exprs(exprs: BTreeMap<ExprId, HirArithExpr>) -> BTreeMap<ExprId, RhirArithExpr> {
+        fn convert_exprs(exprs: BTreeMap<ExprId, HirExpr>) -> BTreeMap<ExprId, RhirExpr> {
             exprs
                 .into_iter()
-                .map(|(id, expr)| (id, convert_arith_expr(expr)))
+                .map(|(id, expr)| (id, convert_expr(expr)))
                 .collect()
         }
 
@@ -634,25 +634,21 @@ impl Resolver {
             RhirDumpStmt { span, var }
         }
 
-        fn convert_arith_expr(expr: HirArithExpr) -> RhirArithExpr {
-            let HirArithExpr { span, ty, kind } = expr;
+        fn convert_expr(expr: HirExpr) -> RhirExpr {
+            let HirExpr { span, ty, kind } = expr;
             let ty = convert_ty(ty);
             let kind = match kind {
-                HirArithExprKind::Var(var) => {
-                    RhirArithExprKind::Var(Box::new(convert_var_ref(*var)))
+                HirExprKind::Var(var) => RhirExprKind::Var(Box::new(convert_var_ref(*var))),
+                HirExprKind::Const(cst) => RhirExprKind::Const(Box::new(convert_const(*cst))),
+                HirExprKind::FnCall(fncall) => {
+                    RhirExprKind::FnCall(Box::new(convert_fncall(*fncall)))
                 }
-                HirArithExprKind::Const(cst) => {
-                    RhirArithExprKind::Const(Box::new(convert_const(*cst)))
-                }
-                HirArithExprKind::FnCall(fncall) => {
-                    RhirArithExprKind::FnCall(Box::new(convert_fncall(*fncall)))
-                }
-                HirArithExprKind::Paren(expr) => RhirArithExprKind::Paren(expr),
-                HirArithExprKind::UnaryOp(op, e) => RhirArithExprKind::UnaryOp(op, e),
-                HirArithExprKind::BinOp(op, lhs, rhs) => RhirArithExprKind::BinOp(op, lhs, rhs),
+                HirExprKind::Paren(expr) => RhirExprKind::Paren(expr),
+                HirExprKind::UnaryOp(op, e) => RhirExprKind::UnaryOp(op, e),
+                HirExprKind::BinOp(op, lhs, rhs) => RhirExprKind::BinOp(op, lhs, rhs),
             };
 
-            RhirArithExpr { span, ty, kind }
+            RhirExpr { span, ty, kind }
         }
 
         fn convert_fncall(fncall: HirFnCall) -> RhirFnCall {

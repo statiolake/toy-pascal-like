@@ -11,7 +11,7 @@ pub struct RhirProgram {
     pub fndecls: BTreeMap<FnId, RhirFnDecl>,
     pub fnbodies: BTreeMap<FnId, RhirFnBody>,
     pub stmts: BTreeMap<StmtId, RhirStmt>,
-    pub exprs: BTreeMap<ExprId, RhirArithExpr>,
+    pub exprs: BTreeMap<ExprId, RhirExpr>,
 }
 
 impl RhirProgram {
@@ -39,7 +39,7 @@ impl RhirProgram {
             .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
     }
 
-    pub fn expr(&self, id: ExprId) -> &RhirArithExpr {
+    pub fn expr(&self, id: ExprId) -> &RhirExpr {
         self.exprs
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
@@ -69,7 +69,7 @@ impl RhirProgram {
             .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
     }
 
-    pub fn expr_mut(&mut self, id: ExprId) -> &mut RhirArithExpr {
+    pub fn expr_mut(&mut self, id: ExprId) -> &mut RhirExpr {
         self.exprs
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
@@ -209,14 +209,14 @@ pub struct RhirDumpStmt {
 }
 
 #[derive(Debug)]
-pub struct RhirArithExpr {
+pub struct RhirExpr {
     pub span: Span,
     pub ty: RhirTy,
-    pub kind: RhirArithExprKind,
+    pub kind: RhirExprKind,
 }
 
 #[derive(Debug)]
-pub enum RhirArithExprKind {
+pub enum RhirExprKind {
     UnaryOp(UnaryOp, ExprId),
     BinOp(BinOp, ExprId, ExprId),
     Var(Box<RhirVarRef>),
