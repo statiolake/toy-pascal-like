@@ -53,21 +53,21 @@ impl TypeckErrorKind {
 
 pub type Result<T, E = TypeckError> = std::result::Result<T, E>;
 
-pub fn check_rhir(prog: RhirProgram) -> Result<ThirProgram, Vec<TypeckError>> {
-    TypeChecker::from_program(prog).check()
+pub fn check_rhir(ctx: RhirContext) -> Result<ThirContext, Vec<TypeckError>> {
+    TypeChecker::from_rhir_ctx(ctx).check()
 }
 
 #[derive(Debug)]
 pub struct TypeChecker {
-    prog: RhirProgram,
+    ctx: RhirContext,
 }
 
 impl TypeChecker {
-    pub fn from_program(prog: RhirProgram) -> Self {
-        Self { prog }
+    pub fn from_rhir_ctx(ctx: RhirContext) -> Self {
+        Self { ctx }
     }
 
-    pub fn check(self) -> Result<ThirProgram, Vec<TypeckError>> {
+    pub fn check(self) -> Result<ThirContext, Vec<TypeckError>> {
         self.check_all()?;
 
         Ok(self.into_thir())
@@ -82,13 +82,13 @@ macro_rules! panic_not_inferred {
 
 impl TypeChecker {
     fn check_all(&self) -> Result<(), Vec<TypeckError>> {
-        let scope_id = self.prog.fndecl(self.prog.start_fn_id).scope_id;
+        let scope_id = self.ctx.fndecl(self.ctx.start_fn_id).scope_id;
         let mut visitor = VisitorContext {
-            prog: &self.prog,
+            ctx: &self.ctx,
             scope_id,
             errors: Vec::new(),
         };
-        visitor.visit_all(&self.prog);
+        visitor.visit_all(&self.ctx);
         return if visitor.errors.is_empty() {
             Ok(())
         } else {
@@ -96,7 +96,7 @@ impl TypeChecker {
         };
 
         struct VisitorContext<'rhir> {
-            prog: &'rhir RhirProgram,
+            ctx: &'rhir RhirContext,
             scope_id: ScopeId,
             errors: Vec<TypeckError>,
         }
@@ -202,28 +202,28 @@ impl TypeChecker {
         }
 
         impl Visit for VisitorContext<'_> {
-            fn visit_fnbody(&mut self, prog: &RhirProgram, fnbody: &RhirFnBody) {
+            fn visit_fnbody(&mut self, ctx: &RhirContext, fnbody: &RhirFnBody) {
                 // set the scope id to the current function
                 self.scope_id = fnbody.inner_scope_id;
-                rhir_visit::visit_fnbody(self, prog, fnbody);
+                rhir_visit::visit_fnbody(self, ctx, fnbody);
             }
 
-            fn visit_assg_stmt(&mut self, prog: &RhirProgram, stmt: &RhirAssgStmt) {
-                rhir_visit::visit_assg_stmt(self, prog, stmt);
+            fn visit_assg_stmt(&mut self, ctx: &RhirContext, stmt: &RhirAssgStmt) {
+                rhir_visit::visit_assg_stmt(self, ctx, stmt);
 
-                let scope = self.prog.scope(self.scope_id);
-                let var = scope.var(stmt.var.res);
+                let scope = self.ctx.scope(self.scope_id);
+                let var = scope.var(ctx.res_var_id(stmt.var.res_id));
 
                 // check lhs and rhs types match
-                let expr = prog.expr(stmt.expr_id);
-                let rt = expr.ty.res.borrow().clone();
+                let expr = ctx.expr(stmt.expr_id);
+                let rt = ctx.res_ty_kind(expr.ty.res_id).borrow().clone();
                 let rt = match rt {
                     TypeckStatus::Infer => panic_not_inferred!(),
                     TypeckStatus::Revealed(ty) => ty,
                     TypeckStatus::Err => return,
                 };
 
-                let lt = var.ty.res.borrow().clone();
+                let lt = ctx.res_ty_kind(var.ty.res_id).borrow().clone();
                 let lt = match lt {
                     TypeckStatus::Infer => rt.clone(),
                     TypeckStatus::Revealed(ty) => ty,
@@ -241,17 +241,17 @@ impl TypeChecker {
                     return;
                 }
 
-                *var.ty.res.borrow_mut() = TypeckStatus::Revealed(lt);
+                *ctx.res_ty_kind(var.ty.res_id).borrow_mut() = TypeckStatus::Revealed(lt);
             }
 
-            fn visit_expr(&mut self, prog: &RhirProgram, expr: &RhirExpr) {
-                rhir_visit::visit_expr(self, prog, expr);
+            fn visit_expr(&mut self, ctx: &RhirContext, expr: &RhirExpr) {
+                rhir_visit::visit_expr(self, ctx, expr);
 
-                *expr.ty.res.borrow_mut() = TypeckStatus::Err;
+                *ctx.res_ty_kind(expr.ty.res_id).borrow_mut() = TypeckStatus::Err;
                 match &expr.kind {
                     RhirExprKind::UnaryOp(op, inner_expr_id) => {
-                        let inner_expr = prog.expr(*inner_expr_id);
-                        let ty = match inner_expr.ty.res.borrow().clone() {
+                        let inner_expr = ctx.expr(*inner_expr_id);
+                        let ty = match ctx.res_ty_kind(inner_expr.ty.res_id).borrow().clone() {
                             TypeckStatus::Infer => panic_not_inferred!(),
                             TypeckStatus::Revealed(ty) => ty,
                             TypeckStatus::Err => return,
@@ -263,17 +263,18 @@ impl TypeChecker {
                                 return;
                             }
                         };
-                        *expr.ty.res.borrow_mut() = TypeckStatus::Revealed(ret_ty);
+                        *ctx.res_ty_kind(expr.ty.res_id).borrow_mut() =
+                            TypeckStatus::Revealed(ret_ty);
                     }
                     RhirExprKind::BinOp(op, lhs_id, rhs_id) => {
-                        let lhs = prog.expr(*lhs_id);
-                        let lt = match lhs.ty.res.borrow().clone() {
+                        let lhs = ctx.expr(*lhs_id);
+                        let lt = match ctx.res_ty_kind(lhs.ty.res_id).borrow().clone() {
                             TypeckStatus::Infer => panic_not_inferred!(),
                             TypeckStatus::Revealed(ty) => ty,
                             TypeckStatus::Err => return,
                         };
-                        let rhs = prog.expr(*rhs_id);
-                        let rt = match rhs.ty.res.borrow().clone() {
+                        let rhs = ctx.expr(*rhs_id);
+                        let rt = match ctx.res_ty_kind(rhs.ty.res_id).borrow().clone() {
                             TypeckStatus::Infer => panic_not_inferred!(),
                             TypeckStatus::Revealed(ty) => ty,
                             TypeckStatus::Err => return,
@@ -286,30 +287,35 @@ impl TypeChecker {
                                 return;
                             }
                         };
-                        *expr.ty.res.borrow_mut() = TypeckStatus::Revealed(ret_ty);
+                        *ctx.res_ty_kind(expr.ty.res_id).borrow_mut() =
+                            TypeckStatus::Revealed(ret_ty);
                     }
                     RhirExprKind::Var(v) => {
-                        let var = self.prog.scope(self.scope_id).var(v.res);
-                        *expr.ty.res.borrow_mut() = var.ty.res.borrow().clone();
+                        let var = self.ctx.scope(self.scope_id).var(ctx.res_var_id(v.res_id));
+                        *ctx.res_ty_kind(expr.ty.res_id).borrow_mut() =
+                            ctx.res_ty_kind(var.ty.res_id).borrow().clone();
                     }
                     RhirExprKind::Const(c) => {
-                        *expr.ty.res.borrow_mut() = c.ty.res.borrow().clone();
+                        *ctx.res_ty_kind(expr.ty.res_id).borrow_mut() =
+                            ctx.res_ty_kind(c.ty.res_id).borrow().clone();
                     }
                     RhirExprKind::FnCall(fc) => {
-                        let fndecl = self.prog.fndecl(fc.res);
-                        *expr.ty.res.borrow_mut() = fndecl.ret_ty.res.borrow().clone()
+                        let fndecl = self.ctx.fndecl(ctx.res_fn_id(fc.res_id));
+                        *ctx.res_ty_kind(expr.ty.res_id).borrow_mut() =
+                            ctx.res_ty_kind(fndecl.ret_ty.res_id).borrow().clone()
                     }
                     RhirExprKind::Paren(inner_expr_id) => {
-                        let inner_expr = prog.expr(*inner_expr_id);
-                        *expr.ty.res.borrow_mut() = inner_expr.ty.res.borrow().clone();
+                        let inner_expr = ctx.expr(*inner_expr_id);
+                        *ctx.res_ty_kind(expr.ty.res_id).borrow_mut() =
+                            ctx.res_ty_kind(inner_expr.ty.res_id).borrow().clone();
                     }
                 }
             }
 
-            fn visit_fncall(&mut self, prog: &RhirProgram, fncall: &RhirFnCall) {
-                rhir_visit::visit_fncall(self, prog, fncall);
+            fn visit_fncall(&mut self, ctx: &RhirContext, fncall: &RhirFnCall) {
+                rhir_visit::visit_fncall(self, ctx, fncall);
 
-                let fndecl = self.prog.fndecl(fncall.res);
+                let fndecl = self.ctx.fndecl(ctx.res_fn_id(fncall.res_id));
 
                 // check the number of args
                 if fncall.arg_ids.len() != fndecl.params.len() {
@@ -325,14 +331,14 @@ impl TypeChecker {
 
                 // check the type of each args
                 for (param, arg_id) in izip!(&fndecl.params, &fncall.arg_ids) {
-                    let pt = match &*param.ty.res.borrow() {
+                    let pt = match &*ctx.res_ty_kind(param.ty.res_id).borrow() {
                         TypeckStatus::Revealed(ty) => ty.clone(),
                         TypeckStatus::Err | TypeckStatus::Infer => {
                             panic!("type of the function parameter is unknown")
                         }
                     };
-                    let arg = prog.expr(*arg_id);
-                    let at = match &*arg.ty.res.borrow() {
+                    let arg = ctx.expr(*arg_id);
+                    let at = match &*ctx.res_ty_kind(arg.ty.res_id).borrow() {
                         TypeckStatus::Revealed(ty) => ty.clone(),
                         TypeckStatus::Infer => panic_not_inferred!(),
                         TypeckStatus::Err => return,
@@ -354,29 +360,36 @@ impl TypeChecker {
 }
 
 impl TypeChecker {
-    fn into_thir(self) -> ThirProgram {
-        let RhirProgram {
+    fn into_thir(self) -> ThirContext {
+        let RhirContext {
             scopes,
             start_fn_id,
             fndecls,
             fnbodies,
             stmts,
             exprs,
-        } = self.prog;
+            res_ty_kinds,
+            res_fn_ids,
+            res_var_ids,
+        } = self.ctx;
 
         let scopes = convert_scopes(scopes);
         let fndecls = convert_fndecls(fndecls);
         let fnbodies = convert_fnbodies(fnbodies);
         let stmts = convert_stmts(stmts);
         let exprs = convert_exprs(exprs);
+        let res_ty_kinds = convert_res_ty_kinds(res_ty_kinds);
 
-        return ThirProgram {
+        return ThirContext {
             scopes,
             start_fn_id,
             fndecls,
             fnbodies,
             stmts,
             exprs,
+            res_ty_kinds,
+            res_fn_ids,
+            res_var_ids,
         };
 
         fn convert_scopes(scopes: BTreeMap<ScopeId, RhirScope>) -> BTreeMap<ScopeId, ThirScope> {
@@ -411,6 +424,15 @@ impl TypeChecker {
             exprs
                 .into_iter()
                 .map(|(id, expr)| (id, convert_expr(expr)))
+                .collect()
+        }
+
+        fn convert_res_ty_kinds(
+            res_ty_kinds: BTreeMap<ResTyKindId, RefCell<TypeckStatus>>,
+        ) -> BTreeMap<ResTyKindId, TyKind> {
+            res_ty_kinds
+                .into_iter()
+                .map(|(id, res_ty_kind)| (id, convert_res(res_ty_kind)))
                 .collect()
         }
 
@@ -470,17 +492,15 @@ impl TypeChecker {
         }
 
         fn convert_param(param: RhirParam) -> ThirParam {
-            let RhirParam { span, res, ty } = param;
+            let RhirParam { span, res_id, ty } = param;
             let ty = convert_ty(ty);
 
-            ThirParam { span, res, ty }
+            ThirParam { span, res_id, ty }
         }
 
         fn convert_ty(ty: RhirTy) -> ThirTy {
-            let RhirTy { span, res } = ty;
-            let res = convert_res(res);
-
-            ThirTy { span, res }
+            let RhirTy { span, res_id } = ty;
+            ThirTy { span, res_id }
         }
 
         fn convert_res(res: RefCell<TypeckStatus>) -> TyKind {
@@ -591,21 +611,21 @@ impl TypeChecker {
             let RhirFnCall {
                 span,
                 span_name,
-                res,
+                res_id,
                 arg_ids,
             } = fncall;
 
             ThirFnCall {
                 span,
                 span_name,
-                res,
+                res_id,
                 arg_ids,
             }
         }
 
         fn convert_var_ref(var: RhirVarRef) -> ThirVarRef {
-            let RhirVarRef { span, res } = var;
-            ThirVarRef { span, res }
+            let RhirVarRef { span, res_id } = var;
+            ThirVarRef { span, res_id }
         }
 
         fn convert_const(cst: RhirConst) -> ThirConst {

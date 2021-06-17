@@ -62,21 +62,21 @@ impl ResolverErrorKind {
 
 pub type Result<T, E = ResolverError> = std::result::Result<T, E>;
 
-pub fn resolve_hir(prog: HirProgram) -> Result<RhirProgram, Vec<ResolverError>> {
-    Resolver::from_program(prog).resolve()
+pub fn resolve_hir(ctx: HirContext) -> Result<RhirContext, Vec<ResolverError>> {
+    Resolver::from_hir_ctx(ctx).resolve()
 }
 
 #[derive(Debug)]
 pub struct Resolver {
-    prog: HirProgram,
+    ctx: HirContext,
 }
 
 impl Resolver {
-    pub fn from_program(prog: HirProgram) -> Self {
-        Self { prog }
+    pub fn from_hir_ctx(ctx: HirContext) -> Self {
+        Self { ctx }
     }
 
-    pub fn resolve(self) -> Result<RhirProgram, Vec<ResolverError>> {
+    pub fn resolve(self) -> Result<RhirContext, Vec<ResolverError>> {
         self.resolve_all()?;
         self.validate();
 
@@ -87,7 +87,7 @@ impl Resolver {
 impl Resolver {
     fn resolve_all(&self) -> Result<(), Vec<ResolverError>> {
         let mut visitor = ProgVisitorContext { errors: vec![] };
-        visitor.visit_all(&self.prog);
+        visitor.visit_all(&self.ctx);
         return if visitor.errors.is_empty() {
             Ok(())
         } else {
@@ -112,24 +112,24 @@ impl Resolver {
             errors: Vec<ResolverError>,
         }
 
-        fn resolve_primitive_ty(ty: &HirTy) -> Result<()> {
-            let cloned = ty.res.borrow().clone();
+        fn resolve_primitive_ty(ctx: &HirContext, ty: &HirTy) -> Result<()> {
+            let cloned = ctx.res_ty_kind(ty.res_id).borrow().clone();
             if let ResolveStatus::Unresolved(name) = cloned {
                 match &*name.ident {
                     "int" => {
-                        *ty.res.borrow_mut() =
+                        *ctx.res_ty_kind(ty.res_id).borrow_mut() =
                             ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Int))
                     }
                     "float" => {
-                        *ty.res.borrow_mut() =
+                        *ctx.res_ty_kind(ty.res_id).borrow_mut() =
                             ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Float))
                     }
                     "bool" => {
-                        *ty.res.borrow_mut() =
+                        *ctx.res_ty_kind(ty.res_id).borrow_mut() =
                             ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Bool))
                     }
                     _ => {
-                        *ty.res.borrow_mut() = ResolveStatus::Err(name.clone());
+                        *ctx.res_ty_kind(ty.res_id).borrow_mut() = ResolveStatus::Err(name.clone());
                         return Err(ResolverError {
                             span: ty.span,
                             kind: ResolverErrorKind::UnknownTy { ident: name.ident },
@@ -157,19 +157,19 @@ impl Resolver {
         impl FnBodyVisitorContext {
             fn resolve_var_ref(
                 &mut self,
-                prog: &HirProgram,
+                ctx: &HirContext,
                 var_ref: &HirVarRef,
                 is_assign: bool,
             ) -> Result<()> {
-                let scope = prog.scope(self.scope_id);
+                let scope = ctx.scope(self.scope_id);
 
-                let cloned = var_ref.res.borrow().clone();
+                let cloned = ctx.res_var_id(var_ref.res_id).borrow().clone();
                 if let ResolveStatus::Unresolved(name) = cloned {
                     let var_id = match find_var(scope, &name) {
                         Ok(id) => id,
                         Err(e) => {
                             // set the status to error
-                            *var_ref.res.borrow_mut() = ResolveStatus::Err(name);
+                            *ctx.res_var_id(var_ref.res_id).borrow_mut() = ResolveStatus::Err(name);
                             return Err(e);
                         }
                     };
@@ -183,7 +183,7 @@ impl Resolver {
                             self.init_vars.insert(var_id);
                         } else {
                             let ident = name.ident.clone();
-                            *var_ref.res.borrow_mut() = ResolveStatus::Err(name);
+                            *ctx.res_var_id(var_ref.res_id).borrow_mut() = ResolveStatus::Err(name);
                             return Err(ResolverError {
                                 span: var_ref.span,
                                 kind: if self.once_init_vars.contains(&var_id) {
@@ -196,30 +196,31 @@ impl Resolver {
                     }
 
                     // Successfully resolved now.
-                    *var_ref.res.borrow_mut() = ResolveStatus::Resolved(var_id);
+                    *ctx.res_var_id(var_ref.res_id).borrow_mut() = ResolveStatus::Resolved(var_id);
                 }
 
                 Ok(())
             }
 
-            fn resolve_fncall(&mut self, prog: &HirProgram, fncall: &HirFnCall) -> Result<()> {
-                let cloned = fncall.res.borrow().clone();
+            fn resolve_fncall(&mut self, ctx: &HirContext, fncall: &HirFnCall) -> Result<()> {
+                let cloned = ctx.res_fn_id(fncall.res_id).borrow().clone();
                 if let ResolveStatus::Unresolved(name) = cloned {
-                    let fndecl = prog
+                    let fndecl = ctx
                         .fndecls
                         .values()
                         .find(|fndecl| fndecl.name.ident == name.ident);
                     let fndecl = match fndecl {
                         Some(fndecl) => fndecl,
                         None => {
-                            *fncall.res.borrow_mut() = ResolveStatus::Err(name.clone());
+                            *ctx.res_fn_id(fncall.res_id).borrow_mut() =
+                                ResolveStatus::Err(name.clone());
                             return Err(ResolverError {
                                 span: fncall.span_name,
                                 kind: ResolverErrorKind::UndeclaredFunction { ident: name.ident },
                             });
                         }
                     };
-                    *fncall.res.borrow_mut() = ResolveStatus::Resolved(fndecl.id);
+                    *ctx.res_fn_id(fncall.res_id).borrow_mut() = ResolveStatus::Resolved(fndecl.id);
                 }
 
                 Ok(())
@@ -227,21 +228,21 @@ impl Resolver {
         }
 
         impl Visit for ProgVisitorContext {
-            fn visit_ty(&mut self, _prog: &HirProgram, ty: &HirTy) {
-                if let Err(err) = resolve_primitive_ty(ty) {
+            fn visit_ty(&mut self, ctx: &HirContext, ty: &HirTy) {
+                if let Err(err) = resolve_primitive_ty(ctx, ty) {
                     self.errors.push(err);
                     return;
                 }
             }
 
-            fn visit_fnbody(&mut self, prog: &HirProgram, fnbody: &HirFnBody) {
+            fn visit_fnbody(&mut self, ctx: &HirContext, fnbody: &HirFnBody) {
                 // set up new local variable tables
                 let mut init_vars = BTreeSet::new();
                 let scope_id = fnbody.inner_scope_id;
-                let scope = prog.scope(scope_id);
+                let scope = ctx.scope(scope_id);
 
                 // params should be registered to the local vars table.
-                let fndecl = prog.fndecl(fnbody.id);
+                let fndecl = ctx.fndecl(fnbody.id);
 
                 // return variable: it is added only when the return type is not void
                 let ret_var_id = match find_var(scope, &fndecl.name) {
@@ -251,13 +252,13 @@ impl Resolver {
                         return;
                     }
                 };
-                *fndecl.ret_var.borrow_mut() = ResolveStatus::Resolved(ret_var_id);
+                *ctx.res_var_id(fndecl.ret_var).borrow_mut() = ResolveStatus::Resolved(ret_var_id);
 
                 // Add return value only when the return type is void: void function can omit the
                 // assignment to the return variable. Otherwise, you must explicitly specify the
                 // return value.
                 if let ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Void)) =
-                    &*fndecl.ret_ty.res.borrow()
+                    &*ctx.res_ty_kind(fndecl.ret_ty.res_id).borrow()
                 {
                     init_vars.insert(ret_var_id);
                 }
@@ -265,8 +266,8 @@ impl Resolver {
                 // find params and make it visible ...
                 for param in &fndecl.params {
                     // ... only when this parameter has a name.
-                    if let Some(name) = &param.res {
-                        let ident = match name.borrow().clone() {
+                    if let Some(name) = &param.res_id {
+                        let ident = match ctx.res_var_id(*name).borrow().clone() {
                             ResolveStatus::Unresolved(ident) => ident,
                             ResolveStatus::Resolved(_) => panic!(
                                 "internal error: parameter should not be resolved at this stage"
@@ -297,7 +298,7 @@ impl Resolver {
                         }
 
                         // resolve this parameter as well
-                        *name.borrow_mut() = ResolveStatus::Resolved(param_var_id);
+                        *ctx.res_var_id(*name).borrow_mut() = ResolveStatus::Resolved(param_var_id);
                     }
                 }
 
@@ -308,7 +309,7 @@ impl Resolver {
                     once_init_vars,
                     errors: Vec::new(),
                 };
-                fnbody_visitor.visit_fnbody(prog, &fnbody);
+                fnbody_visitor.visit_fnbody(ctx, &fnbody);
 
                 // check return value is initialized (only when the body kind is Stmt, Builtins are
                 // completely different).
@@ -335,26 +336,26 @@ impl Resolver {
         }
 
         impl Visit for FnBodyVisitorContext {
-            fn visit_ty(&mut self, _prog: &HirProgram, ty: &HirTy) {
-                if let Err(err) = resolve_primitive_ty(ty) {
+            fn visit_ty(&mut self, ctx: &HirContext, ty: &HirTy) {
+                if let Err(err) = resolve_primitive_ty(ctx, ty) {
                     self.errors.push(err);
                     return;
                 }
             }
 
-            fn visit_if_stmt(&mut self, prog: &HirProgram, stmt: &HirIfStmt) {
-                let cond = prog.expr(stmt.cond_id);
-                self.visit_expr(prog, cond);
+            fn visit_if_stmt(&mut self, ctx: &HirContext, stmt: &HirIfStmt) {
+                let cond = ctx.expr(stmt.cond_id);
+                self.visit_expr(ctx, cond);
 
                 // if stmt may create "possibly uninitialized variables".
                 let init_vars = self.init_vars.clone();
-                let then = prog.stmt(stmt.then_id);
-                self.visit_stmt(prog, then);
+                let then = ctx.stmt(stmt.then_id);
+                self.visit_stmt(ctx, then);
                 // restore the original init_vars for else part
                 let then_init_vars = replace(&mut self.init_vars, init_vars);
                 if let Some(otherwise_id) = stmt.otherwise_id {
-                    let otherwise = prog.stmt(otherwise_id);
-                    self.visit_stmt(prog, otherwise);
+                    let otherwise = ctx.stmt(otherwise_id);
+                    self.visit_stmt(ctx, otherwise);
                 }
                 let otherwise_init_vars = self.init_vars.clone();
 
@@ -364,39 +365,39 @@ impl Resolver {
                     .collect();
             }
 
-            fn visit_while_stmt(&mut self, prog: &HirProgram, stmt: &HirWhileStmt) {
+            fn visit_while_stmt(&mut self, ctx: &HirContext, stmt: &HirWhileStmt) {
                 // any variables declared inside the while loop is "possibly uninitialized", because
                 // the loop body is not necessarily run.
                 let init_vars = self.init_vars.clone();
-                let cond = prog.expr(stmt.cond_id);
-                self.visit_expr(prog, cond);
-                let body = prog.stmt(stmt.body_id);
-                self.visit_stmt(prog, body);
+                let cond = ctx.expr(stmt.cond_id);
+                self.visit_expr(ctx, cond);
+                let body = ctx.stmt(stmt.body_id);
+                self.visit_stmt(ctx, body);
                 self.init_vars = init_vars;
             }
 
-            fn visit_assg_stmt(&mut self, prog: &HirProgram, stmt: &HirAssgStmt) {
+            fn visit_assg_stmt(&mut self, ctx: &HirContext, stmt: &HirAssgStmt) {
                 // We can't use hir_visit::visit_assg_stmt(), since that will try to resolve var_ref
                 // of asignee.
-                let expr = prog.expr(stmt.expr_id);
-                self.visit_expr(prog, expr);
-                if let Err(err) = self.resolve_var_ref(prog, &stmt.var, true) {
+                let expr = ctx.expr(stmt.expr_id);
+                self.visit_expr(ctx, expr);
+                if let Err(err) = self.resolve_var_ref(ctx, &stmt.var, true) {
                     self.errors.push(err);
                     return;
                 }
             }
 
-            fn visit_var_ref(&mut self, prog: &HirProgram, var_ref: &HirVarRef) {
-                hir_visit::visit_var_ref(self, prog, var_ref);
-                if let Err(err) = self.resolve_var_ref(prog, &*var_ref, false) {
+            fn visit_var_ref(&mut self, ctx: &HirContext, var_ref: &HirVarRef) {
+                hir_visit::visit_var_ref(self, ctx, var_ref);
+                if let Err(err) = self.resolve_var_ref(ctx, &*var_ref, false) {
                     self.errors.push(err);
                     return;
                 }
             }
 
-            fn visit_fncall(&mut self, prog: &HirProgram, fncall: &HirFnCall) {
-                hir_visit::visit_fncall(self, prog, fncall);
-                if let Err(err) = self.resolve_fncall(prog, fncall) {
+            fn visit_fncall(&mut self, ctx: &HirContext, fncall: &HirFnCall) {
+                hir_visit::visit_fncall(self, ctx, fncall);
+                if let Err(err) = self.resolve_fncall(ctx, fncall) {
                     self.errors.push(err);
                     return;
                 }
@@ -406,36 +407,45 @@ impl Resolver {
 
     fn validate(&self) {
         let mut visitor = ValidatorVisitor;
-        visitor.visit_all(&self.prog);
+        visitor.visit_all(&self.ctx);
         struct ValidatorVisitor;
         impl Visit for ValidatorVisitor {}
     }
 }
 
 impl Resolver {
-    fn into_rhir(self) -> RhirProgram {
-        let HirProgram {
+    fn into_rhir(self) -> RhirContext {
+        let HirContext {
             scopes,
             start_fn_id,
             fndecls,
             fnbodies,
             stmts,
             exprs,
-        } = self.prog;
+            res_ty_kinds,
+            res_fn_ids,
+            res_var_ids,
+        } = self.ctx;
 
         let scopes = convert_scopes(scopes);
         let fndecls = convert_fndecls(fndecls);
         let fnbodies = convert_fnbodies(fnbodies);
         let stmts = convert_stmts(stmts);
         let exprs = convert_exprs(exprs);
+        let res_ty_kinds = convert_res_ty_kinds(res_ty_kinds);
+        let res_fn_ids = convert_res_fn_ids(res_fn_ids);
+        let res_var_ids = convert_res_var_ids(res_var_ids);
 
-        return RhirProgram {
+        return RhirContext {
             scopes,
             start_fn_id,
             fndecls,
             fnbodies,
             stmts,
             exprs,
+            res_ty_kinds,
+            res_fn_ids,
+            res_var_ids,
         };
 
         fn convert_scopes(scopes: BTreeMap<ScopeId, HirScope>) -> BTreeMap<ScopeId, RhirScope> {
@@ -470,6 +480,33 @@ impl Resolver {
             exprs
                 .into_iter()
                 .map(|(id, expr)| (id, convert_expr(expr)))
+                .collect()
+        }
+
+        fn convert_res_ty_kinds(
+            res_ty_kinds: BTreeMap<ResTyKindId, RefCell<ResolveStatus<TypeckStatus>>>,
+        ) -> BTreeMap<ResTyKindId, RefCell<TypeckStatus>> {
+            res_ty_kinds
+                .into_iter()
+                .map(|(id, res_ty_kind)| (id, RefCell::new(convert_res(res_ty_kind))))
+                .collect()
+        }
+
+        fn convert_res_fn_ids(
+            res_fn_ids: BTreeMap<ResFnIdId, RefCell<ResolveStatus<FnId>>>,
+        ) -> BTreeMap<ResFnIdId, FnId> {
+            res_fn_ids
+                .into_iter()
+                .map(|(id, res_fn_id)| (id, convert_res(res_fn_id)))
+                .collect()
+        }
+
+        fn convert_res_var_ids(
+            res_var_ids: BTreeMap<ResVarIdId, RefCell<ResolveStatus<VarId>>>,
+        ) -> BTreeMap<ResVarIdId, VarId> {
+            res_var_ids
+                .into_iter()
+                .map(|(id, res_var_id)| (id, convert_res(res_var_id)))
                 .collect()
         }
 
@@ -513,9 +550,7 @@ impl Resolver {
                 ret_var,
                 ret_ty,
             } = fndecl;
-
             let params = params.into_iter().map(convert_param).collect_vec();
-            let ret_var = convert_res(ret_var);
             let ret_ty = convert_ty(ret_ty);
 
             RhirFnDecl {
@@ -530,21 +565,14 @@ impl Resolver {
         }
 
         fn convert_param(param: HirParam) -> RhirParam {
-            let HirParam { span, res, ty } = param;
+            let HirParam { span, res_id, ty } = param;
             let ty = convert_ty(ty);
-
-            RhirParam {
-                span,
-                res: res.map(convert_res),
-                ty,
-            }
+            RhirParam { span, res_id, ty }
         }
 
         fn convert_ty(ty: HirTy) -> RhirTy {
-            let HirTy { span, res } = ty;
-            let res = RefCell::new(convert_res(res));
-
-            RhirTy { span, res }
+            let HirTy { span, res_id } = ty;
+            RhirTy { span, res_id }
         }
 
         fn convert_res<T: Clone>(res: RefCell<ResolveStatus<T>>) -> T {
@@ -653,24 +681,21 @@ impl Resolver {
             let HirFnCall {
                 span,
                 span_name,
-                res,
+                res_id,
                 args,
             } = fncall;
-            let res = convert_res(res);
 
             RhirFnCall {
                 span,
                 span_name,
-                res,
+                res_id,
                 arg_ids: args,
             }
         }
 
         fn convert_var_ref(var: HirVarRef) -> RhirVarRef {
-            let HirVarRef { span, res } = var;
-            let res = convert_res(res);
-
-            RhirVarRef { span, res }
+            let HirVarRef { span, res_id } = var;
+            RhirVarRef { span, res_id }
         }
 
         fn convert_const(cst: HirConst) -> RhirConst {

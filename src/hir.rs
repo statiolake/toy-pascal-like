@@ -20,6 +20,15 @@ pub struct StmtId(usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ExprId(usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ResTyKindId(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ResFnIdId(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ResVarIdId(usize);
+
 #[derive(Debug)]
 pub struct ItemIdGenerator {
     current: usize,
@@ -50,6 +59,18 @@ impl ItemIdGenerator {
         ExprId(self.next_id())
     }
 
+    pub fn gen_res_ty_kind(&mut self) -> ResTyKindId {
+        ResTyKindId(self.next_id())
+    }
+
+    pub fn gen_res_fn_id(&mut self) -> ResFnIdId {
+        ResFnIdId(self.next_id())
+    }
+
+    pub fn gen_res_var_id(&mut self) -> ResVarIdId {
+        ResVarIdId(self.next_id())
+    }
+
     fn next_id(&mut self) -> usize {
         let id = self.current;
         self.current += 1;
@@ -64,16 +85,19 @@ impl Default for ItemIdGenerator {
 }
 
 #[derive(Debug)]
-pub struct HirProgram {
+pub struct HirContext {
     pub scopes: BTreeMap<ScopeId, HirScope>,
     pub start_fn_id: FnId,
     pub fndecls: BTreeMap<FnId, HirFnDecl>,
     pub fnbodies: BTreeMap<FnId, HirFnBody>,
     pub stmts: BTreeMap<StmtId, HirStmt>,
     pub exprs: BTreeMap<ExprId, HirExpr>,
+    pub res_ty_kinds: BTreeMap<ResTyKindId, RefCell<ResolveStatus<TypeckStatus>>>,
+    pub res_fn_ids: BTreeMap<ResFnIdId, RefCell<ResolveStatus<FnId>>>,
+    pub res_var_ids: BTreeMap<ResVarIdId, RefCell<ResolveStatus<VarId>>>,
 }
 
-impl HirProgram {
+impl HirContext {
     pub fn scope(&self, id: ScopeId) -> &HirScope {
         self.scopes
             .get(&id)
@@ -133,6 +157,33 @@ impl HirProgram {
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
     }
+
+    pub fn res_ty_kind(&self, id: ResTyKindId) -> &RefCell<ResolveStatus<TypeckStatus>> {
+        self.res_ty_kinds.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: type resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
+
+    pub fn res_fn_id(&self, id: ResFnIdId) -> &RefCell<ResolveStatus<FnId>> {
+        self.res_fn_ids.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: FnId resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
+
+    pub fn res_var_id(&self, id: ResVarIdId) -> &RefCell<ResolveStatus<VarId>> {
+        self.res_var_ids.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: VarId resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -188,7 +239,7 @@ pub struct HirFnDecl {
     pub span: Span,
     pub name: Ident,
     pub params: Vec<HirParam>,
-    pub ret_var: RefCell<ResolveStatus<VarId>>,
+    pub ret_var: ResVarIdId,
     pub ret_ty: HirTy,
 }
 
@@ -198,7 +249,7 @@ pub struct HirParam {
     // `name` is Option since builtin functions doesn't have parameter names. Their parameters
     // cannot be found as our interpreter's local variable table, since that's completely native
     // Rust closure arguments.
-    pub res: Option<RefCell<ResolveStatus<VarId>>>,
+    pub res_id: Option<ResVarIdId>,
     pub ty: HirTy,
 }
 
@@ -225,7 +276,7 @@ pub enum TypeckStatus {
 #[derive(Debug, Clone)]
 pub struct HirTy {
     pub span: Span,
-    pub res: RefCell<ResolveStatus<TypeckStatus>>,
+    pub res_id: ResTyKindId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -464,7 +515,7 @@ impl fmt::Display for BinOp {
 #[derive(Debug)]
 pub struct HirVarRef {
     pub span: Span,
-    pub res: RefCell<ResolveStatus<VarId>>,
+    pub res_id: ResVarIdId,
 }
 
 #[derive(Debug)]
@@ -528,6 +579,6 @@ impl Value {
 pub struct HirFnCall {
     pub span: Span,
     pub span_name: Span,
-    pub res: RefCell<ResolveStatus<FnId>>,
+    pub res_id: ResFnIdId,
     pub args: Vec<ExprId>,
 }

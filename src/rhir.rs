@@ -5,16 +5,19 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug)]
-pub struct RhirProgram {
+pub struct RhirContext {
     pub scopes: BTreeMap<ScopeId, RhirScope>,
     pub start_fn_id: FnId,
     pub fndecls: BTreeMap<FnId, RhirFnDecl>,
     pub fnbodies: BTreeMap<FnId, RhirFnBody>,
     pub stmts: BTreeMap<StmtId, RhirStmt>,
     pub exprs: BTreeMap<ExprId, RhirExpr>,
+    pub res_ty_kinds: BTreeMap<ResTyKindId, RefCell<TypeckStatus>>,
+    pub res_fn_ids: BTreeMap<ResFnIdId, FnId>,
+    pub res_var_ids: BTreeMap<ResVarIdId, VarId>,
 }
 
-impl RhirProgram {
+impl RhirContext {
     pub fn scope(&self, id: ScopeId) -> &RhirScope {
         self.scopes
             .get(&id)
@@ -74,6 +77,33 @@ impl RhirProgram {
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
     }
+
+    pub fn res_ty_kind(&self, id: ResTyKindId) -> &RefCell<TypeckStatus> {
+        self.res_ty_kinds.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: type resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
+
+    pub fn res_fn_id(&self, id: ResFnIdId) -> FnId {
+        *self.res_fn_ids.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: FnId resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
+
+    pub fn res_var_id(&self, id: ResVarIdId) -> VarId {
+        *self.res_var_ids.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: VarId resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -109,7 +139,7 @@ pub struct RhirFnDecl {
     pub span: Span,
     pub name: Ident,
     pub params: Vec<RhirParam>,
-    pub ret_var: VarId,
+    pub ret_var: ResVarIdId,
     pub ret_ty: RhirTy,
 }
 
@@ -118,14 +148,14 @@ pub struct RhirParam {
     pub span: Span,
     // None if this parameter is of buitlin functions: they are just Rust native closures so they
     // don't have corresponding local variables for parameters.
-    pub res: Option<VarId>,
+    pub res_id: Option<ResVarIdId>,
     pub ty: RhirTy,
 }
 
 #[derive(Debug, Clone)]
 pub struct RhirTy {
     pub span: Span,
-    pub res: RefCell<TypeckStatus>,
+    pub res_id: ResTyKindId,
 }
 
 #[derive(Debug)]
@@ -228,7 +258,7 @@ pub enum RhirExprKind {
 #[derive(Debug)]
 pub struct RhirVarRef {
     pub span: Span,
-    pub res: VarId,
+    pub res_id: ResVarIdId,
 }
 
 #[derive(Debug)]
@@ -242,6 +272,6 @@ pub struct RhirConst {
 pub struct RhirFnCall {
     pub span: Span,
     pub span_name: Span,
-    pub res: FnId,
+    pub res_id: ResFnIdId,
     pub arg_ids: Vec<ExprId>,
 }
