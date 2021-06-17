@@ -13,14 +13,6 @@ pub struct ThirProgram {
     pub exprs: BTreeMap<ExprId, ThirArithExpr>,
 }
 
-#[derive(Debug)]
-pub struct ThirScope {
-    pub id: ScopeId,
-    pub parent_id: Option<ScopeId>,
-    pub fn_ids: Vec<FnId>,
-    pub vars: BTreeMap<VarId, ThirVar>,
-}
-
 impl ThirProgram {
     pub fn scope(&self, id: ScopeId) -> &ThirScope {
         self.scopes
@@ -80,6 +72,28 @@ impl ThirProgram {
         self.exprs
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
+    }
+}
+
+#[derive(Debug)]
+pub struct ThirScope {
+    pub id: ScopeId,
+    pub parent_id: Option<ScopeId>,
+    pub fn_ids: Vec<FnId>,
+    pub vars: BTreeMap<VarId, ThirVar>,
+}
+
+impl ThirScope {
+    pub fn var(&self, id: VarId) -> &ThirVar {
+        self.vars
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: variable of id {:?} not registered", id))
+    }
+
+    pub fn var_mut(&mut self, id: VarId) -> &mut ThirVar {
+        self.vars
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: variable of id {:?} not registered", id))
     }
 }
 

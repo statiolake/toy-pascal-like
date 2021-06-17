@@ -90,6 +90,12 @@ impl RhirScope {
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: variable of id {:?} not registered", id))
     }
+
+    pub fn var_mut(&mut self, id: VarId) -> &mut RhirVar {
+        self.vars
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: variable of id {:?} not registered", id))
+    }
 }
 
 #[derive(Debug)]
