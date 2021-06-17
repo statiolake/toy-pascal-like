@@ -14,6 +14,21 @@ pub struct ScopeId(usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VarId(usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct StmtId(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ExprId(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ResTyKindId(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ResFnIdId(usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ResVarIdId(usize);
+
 #[derive(Debug)]
 pub struct ItemIdGenerator {
     current: usize,
@@ -36,6 +51,26 @@ impl ItemIdGenerator {
         VarId(self.next_id())
     }
 
+    pub fn gen_stmt(&mut self) -> StmtId {
+        StmtId(self.next_id())
+    }
+
+    pub fn gen_expr(&mut self) -> ExprId {
+        ExprId(self.next_id())
+    }
+
+    pub fn gen_res_ty_kind(&mut self) -> ResTyKindId {
+        ResTyKindId(self.next_id())
+    }
+
+    pub fn gen_res_fn_id(&mut self) -> ResFnIdId {
+        ResFnIdId(self.next_id())
+    }
+
+    pub fn gen_res_var_id(&mut self) -> ResVarIdId {
+        ResVarIdId(self.next_id())
+    }
+
     fn next_id(&mut self) -> usize {
         let id = self.current;
         self.current += 1;
@@ -50,14 +85,19 @@ impl Default for ItemIdGenerator {
 }
 
 #[derive(Debug)]
-pub struct HirProgram {
+pub struct HirContext {
     pub scopes: BTreeMap<ScopeId, HirScope>,
     pub start_fn_id: FnId,
     pub fndecls: BTreeMap<FnId, HirFnDecl>,
     pub fnbodies: BTreeMap<FnId, HirFnBody>,
+    pub stmts: BTreeMap<StmtId, HirStmt>,
+    pub exprs: BTreeMap<ExprId, HirExpr>,
+    pub res_ty_kinds: BTreeMap<ResTyKindId, RefCell<ResolveStatus<TypeckStatus>>>,
+    pub res_fn_ids: BTreeMap<ResFnIdId, RefCell<ResolveStatus<FnId>>>,
+    pub res_var_ids: BTreeMap<ResVarIdId, RefCell<ResolveStatus<VarId>>>,
 }
 
-impl HirProgram {
+impl HirContext {
     pub fn scope(&self, id: ScopeId) -> &HirScope {
         self.scopes
             .get(&id)
@@ -76,6 +116,18 @@ impl HirProgram {
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
 
+    pub fn stmt(&self, id: StmtId) -> &HirStmt {
+        self.stmts
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
+    }
+
+    pub fn expr(&self, id: ExprId) -> &HirExpr {
+        self.exprs
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
+    }
+
     pub fn scope_mut(&mut self, id: ScopeId) -> &mut HirScope {
         self.scopes
             .get_mut(&id)
@@ -92,6 +144,45 @@ impl HirProgram {
         self.fnbodies
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
+    }
+
+    pub fn stmt_mut(&mut self, id: StmtId) -> &mut HirStmt {
+        self.stmts
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
+    }
+
+    pub fn expr_mut(&mut self, id: ExprId) -> &mut HirExpr {
+        self.exprs
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
+    }
+
+    pub fn res_ty_kind(&self, id: ResTyKindId) -> &RefCell<ResolveStatus<TypeckStatus>> {
+        self.res_ty_kinds.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: type resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
+
+    pub fn res_fn_id(&self, id: ResFnIdId) -> &RefCell<ResolveStatus<FnId>> {
+        self.res_fn_ids.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: FnId resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
+
+    pub fn res_var_id(&self, id: ResVarIdId) -> &RefCell<ResolveStatus<VarId>> {
+        self.res_var_ids.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: VarId resolution of id {:?} not registered",
+                id
+            )
+        })
     }
 }
 
@@ -148,7 +239,7 @@ pub struct HirFnDecl {
     pub span: Span,
     pub name: Ident,
     pub params: Vec<HirParam>,
-    pub ret_var: RefCell<ResolveStatus<VarId>>,
+    pub ret_var: ResVarIdId,
     pub ret_ty: HirTy,
 }
 
@@ -158,7 +249,7 @@ pub struct HirParam {
     // `name` is Option since builtin functions doesn't have parameter names. Their parameters
     // cannot be found as our interpreter's local variable table, since that's completely native
     // Rust closure arguments.
-    pub res: Option<RefCell<ResolveStatus<VarId>>>,
+    pub res_id: Option<ResVarIdId>,
     pub ty: HirTy,
 }
 
@@ -185,7 +276,7 @@ pub enum TypeckStatus {
 #[derive(Debug, Clone)]
 pub struct HirTy {
     pub span: Span,
-    pub res: RefCell<ResolveStatus<TypeckStatus>>,
+    pub res_id: ResTyKindId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -229,7 +320,7 @@ pub struct HirFnBody {
 }
 
 pub enum HirFnBodyKind {
-    Stmt(Box<HirBeginStmt>),
+    Stmt(StmtId),
     Builtin(Box<dyn Fn(Vec<Value>) -> Value>),
 }
 
@@ -267,52 +358,100 @@ pub enum HirStmtKind {
     Dump(HirDumpStmt),
 }
 
+impl From<HirDumpStmt> for HirStmt {
+    fn from(v: HirDumpStmt) -> Self {
+        HirStmt {
+            span: v.span,
+            kind: HirStmtKind::Dump(v),
+        }
+    }
+}
+
+impl From<HirAssgStmt> for HirStmt {
+    fn from(v: HirAssgStmt) -> Self {
+        HirStmt {
+            span: v.span,
+            kind: HirStmtKind::Assg(v),
+        }
+    }
+}
+
+impl From<HirBeginStmt> for HirStmt {
+    fn from(v: HirBeginStmt) -> Self {
+        HirStmt {
+            span: v.span,
+            kind: HirStmtKind::Begin(v),
+        }
+    }
+}
+
+impl From<HirWhileStmt> for HirStmt {
+    fn from(v: HirWhileStmt) -> Self {
+        HirStmt {
+            span: v.span,
+            kind: HirStmtKind::While(v),
+        }
+    }
+}
+
+impl From<HirIfStmt> for HirStmt {
+    fn from(v: HirIfStmt) -> Self {
+        HirStmt {
+            span: v.span,
+            kind: HirStmtKind::If(v),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct HirIfStmt {
     pub span: Span,
-    pub cond: Box<HirArithExpr>,
-    pub then: Box<HirStmt>,
-    pub otherwise: Option<Box<HirStmt>>,
+    pub cond_id: ExprId,
+    pub then_id: StmtId,
+    pub otherwise_id: Option<StmtId>,
 }
 
 #[derive(Debug)]
 pub struct HirWhileStmt {
     pub span: Span,
-    pub cond: Box<HirArithExpr>,
-    pub body: Box<HirStmt>,
+    pub cond_id: ExprId,
+    pub body_id: StmtId,
 }
 
 #[derive(Debug)]
 pub struct HirBeginStmt {
     pub span: Span,
-    pub stmts: Vec<HirStmt>,
+    pub stmt_ids: Vec<StmtId>,
 }
 
 #[derive(Debug)]
 pub struct HirAssgStmt {
     pub span: Span,
-    pub var: Box<HirVarRef>,
-    pub expr: Box<HirArithExpr>,
+    pub var: HirVarRef,
+    pub expr_id: ExprId,
 }
 
 #[derive(Debug)]
 pub struct HirDumpStmt {
     pub span: Span,
-    pub var: Box<HirVarRef>,
+    pub var: HirVarRef,
 }
 
 #[derive(Debug)]
-pub struct HirArithExpr {
+pub struct HirExpr {
     pub span: Span,
     pub ty: HirTy,
-    pub kind: HirArithExprKind,
+    pub kind: HirExprKind,
 }
 
 #[derive(Debug)]
-pub enum HirArithExprKind {
-    Primary(Box<HirPrimaryExpr>),
-    UnaryOp(UnaryOp, Box<HirArithExpr>),
-    BinOp(BinOp, Box<HirArithExpr>, Box<HirArithExpr>),
+pub enum HirExprKind {
+    UnaryOp(UnaryOp, ExprId),
+    BinOp(BinOp, ExprId, ExprId),
+    Var(HirVarRef),
+    Const(HirConst),
+    FnCall(HirFnCall),
+    Paren(ExprId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -374,24 +513,9 @@ impl fmt::Display for BinOp {
 }
 
 #[derive(Debug)]
-pub struct HirPrimaryExpr {
-    pub span: Span,
-    pub ty: HirTy,
-    pub kind: HirPrimaryExprKind,
-}
-
-#[derive(Debug)]
-pub enum HirPrimaryExprKind {
-    Var(Box<HirVarRef>),
-    Const(Box<HirConst>),
-    FnCall(Box<HirFnCall>),
-    Paren(Box<HirArithExpr>),
-}
-
-#[derive(Debug)]
 pub struct HirVarRef {
     pub span: Span,
-    pub res: RefCell<ResolveStatus<VarId>>,
+    pub res_id: ResVarIdId,
 }
 
 #[derive(Debug)]
@@ -455,6 +579,6 @@ impl Value {
 pub struct HirFnCall {
     pub span: Span,
     pub span_name: Span,
-    pub res: RefCell<ResolveStatus<FnId>>,
-    pub args: Vec<HirArithExpr>,
+    pub res_id: ResFnIdId,
+    pub args: Vec<ExprId>,
 }

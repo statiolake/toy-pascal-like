@@ -7,10 +7,15 @@ use maplit::btreemap;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-pub fn lower_ast(stmt: &Ast<AstBeginStmt>, builtins: Vec<Builtin>) -> HirProgram {
+pub fn lower_ast(stmt: &Ast<AstBeginStmt>, builtins: Vec<Builtin>) -> HirContext {
     let (mut lctx, root_scope_id) = LoweringContext::with_builtins(builtins);
 
     // register script root function
+    let res_ret_ty_kind = ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Void));
+    let ret_ty = HirTy {
+        span: Span::new_zero(),
+        res_id: lctx.register_res_ty_kind(res_ret_ty_kind),
+    };
     let (start_fn_id, start_scope_id) = lctx.register_fndecl(
         root_scope_id,
         stmt.span,
@@ -19,40 +24,45 @@ pub fn lower_ast(stmt: &Ast<AstBeginStmt>, builtins: Vec<Builtin>) -> HirProgram
             ident: SCRIPT_ROOT_FN_NAME.to_string(),
         },
         vec![],
-        HirTy {
-            span: Span::new_zero(),
-            res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(
-                TyKind::Void,
-            ))),
-        },
+        ret_ty,
     );
 
     // lower the entire statement
     let stmt = lctx.lower_begin_stmt(start_fn_id, start_scope_id, stmt);
-
+    let stmt_id = lctx.register_stmt(stmt.into());
     lctx.register_fnbody(
         root_scope_id,
         start_fn_id,
         HirFnBody {
             id: start_fn_id,
             inner_scope_id: start_scope_id,
-            kind: HirFnBodyKind::Stmt(Box::new(stmt)),
+            kind: HirFnBodyKind::Stmt(stmt_id),
         },
     );
 
-    HirProgram {
+    HirContext {
         scopes: lctx.scopes,
         start_fn_id,
         fndecls: lctx.fndecls,
         fnbodies: lctx.fnbodies,
+        stmts: lctx.stmts,
+        exprs: lctx.exprs,
+        res_ty_kinds: lctx.res_ty_kinds,
+        res_fn_ids: lctx.res_fn_ids,
+        res_var_ids: lctx.res_var_ids,
     }
 }
 
 struct LoweringContext {
+    id_gen: ItemIdGenerator,
     scopes: BTreeMap<ScopeId, HirScope>,
     fndecls: BTreeMap<FnId, HirFnDecl>,
     fnbodies: BTreeMap<FnId, HirFnBody>,
-    id_gen: ItemIdGenerator,
+    stmts: BTreeMap<StmtId, HirStmt>,
+    exprs: BTreeMap<ExprId, HirExpr>,
+    res_ty_kinds: BTreeMap<ResTyKindId, RefCell<ResolveStatus<TypeckStatus>>>,
+    res_fn_ids: BTreeMap<ResFnIdId, RefCell<ResolveStatus<FnId>>>,
+    res_var_ids: BTreeMap<ResVarIdId, RefCell<ResolveStatus<VarId>>>,
 }
 
 impl LoweringContext {
@@ -65,10 +75,15 @@ impl LoweringContext {
 
         let scopes = btreemap! { root_scope_id => root_scope };
         let lctx = Self {
+            id_gen,
             scopes,
             fndecls: BTreeMap::new(),
             fnbodies: BTreeMap::new(),
-            id_gen,
+            stmts: BTreeMap::new(),
+            exprs: BTreeMap::new(),
+            res_ty_kinds: BTreeMap::new(),
+            res_fn_ids: BTreeMap::new(),
+            res_var_ids: BTreeMap::new(),
         };
 
         (lctx, root_scope_id)
@@ -93,16 +108,20 @@ impl LoweringContext {
                 .into_iter()
                 .map(|(_, ty_kind)| HirParam {
                     span: Span::new_zero(),
-                    res: None,
+                    res_id: None,
                     ty: HirTy {
                         span: Span::new_zero(),
-                        res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(ty_kind))),
+                        res_id: lctx.register_res_ty_kind(ResolveStatus::Resolved(
+                            TypeckStatus::Revealed(ty_kind),
+                        )),
                     },
                 })
                 .collect_vec();
+
+            let res_ret_ty_kind = ResolveStatus::Resolved(TypeckStatus::Revealed(ret_ty));
             let ret_ty = HirTy {
                 span: Span::new_zero(),
-                res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(ret_ty))),
+                res_id: lctx.register_res_ty_kind(res_ret_ty_kind),
             };
 
             let (fn_id, inner_scope_id) =
@@ -150,7 +169,7 @@ impl LoweringContext {
             span,
             name: name.clone(),
             params: params.clone(),
-            ret_var: RefCell::new(ResolveStatus::Unresolved(name.clone())),
+            ret_var: self.register_res_var_id(ResolveStatus::Unresolved(name.clone())),
             ret_ty: ret_ty.clone(),
         };
 
@@ -174,8 +193,14 @@ impl LoweringContext {
         for param in params {
             // Register parameters only when they have a name; i.e. except builtin functions written
             // in native Rust closure.
-            if let Some(name) = param.res {
-                if let ResolveStatus::Unresolved(name) = name.borrow().clone() {
+            if let Some(res_var_id_id) = param.res_id {
+                let res_var_id = self
+                    .res_var_ids
+                    .get(&res_var_id_id)
+                    .expect("internal error: cannot find parameter variable")
+                    .borrow()
+                    .clone();
+                if let ResolveStatus::Unresolved(name) = res_var_id {
                     self.try_register_var(new_scope_id, name, param.ty);
                 } else {
                     panic!("internal error: parameters should not be resolved at this stage");
@@ -195,6 +220,40 @@ impl LoweringContext {
         );
     }
 
+    fn register_stmt(&mut self, stmt: HirStmt) -> StmtId {
+        let stmt_id = self.id_gen.gen_stmt();
+        self.stmts.insert(stmt_id, stmt);
+        stmt_id
+    }
+
+    fn register_expr(&mut self, expr: HirExpr) -> ExprId {
+        let expr_id = self.id_gen.gen_expr();
+        self.exprs.insert(expr_id, expr);
+        expr_id
+    }
+
+    pub fn register_res_ty_kind(
+        &mut self,
+        res_ty_kind: ResolveStatus<TypeckStatus>,
+    ) -> ResTyKindId {
+        let id = self.id_gen.gen_res_ty_kind();
+        self.res_ty_kinds.insert(id, RefCell::new(res_ty_kind));
+        id
+    }
+
+    pub fn register_res_fn_id(&mut self, res_fn_id: ResolveStatus<FnId>) -> ResFnIdId {
+        let id = self.id_gen.gen_res_fn_id();
+        self.res_fn_ids.insert(id, RefCell::new(res_fn_id));
+        id
+    }
+
+    pub fn register_res_var_id(&mut self, res_var_id: ResolveStatus<VarId>) -> ResVarIdId {
+        let id = self.id_gen.gen_res_var_id();
+        self.res_var_ids.insert(id, RefCell::new(res_var_id));
+        id
+    }
+
+    /// NOTE: If it is decided not to register, registration for ty (ty.res_id) is also removed.
     fn try_register_var(&mut self, scope_id: ScopeId, name: Ident, ty: HirTy) {
         // If the variable of same name is already registered, skip this. Those correctness is
         // checked in resolve phase, where the variable is actually resolved.
@@ -204,6 +263,11 @@ impl LoweringContext {
             .values()
             .any(|v| v.name.ident == name.ident)
         {
+            // Remove ty.res_id: unused entry can never be inferred, so the unused registration is
+            // harmful.
+            self.res_ty_kinds
+                .remove(&ty.res_id)
+                .expect("internal error: type resolution must be registered");
             return;
         }
 
@@ -215,7 +279,7 @@ impl LoweringContext {
             .insert(id, HirVar { id, name, ty });
     }
 
-    fn lower_stmt(&mut self, fn_id: FnId, scope_id: ScopeId, stmt: &Ast<AstStmt>) -> HirStmt {
+    fn lower_stmt(&mut self, fn_id: FnId, scope_id: ScopeId, stmt: &Ast<AstStmt>) -> StmtId {
         let lowered = match &stmt.ast {
             AstStmt::FuncdefStmt(s) => {
                 HirStmtKind::FnDef(self.lower_fndef_stmt(fn_id, scope_id, s))
@@ -227,10 +291,11 @@ impl LoweringContext {
             AstStmt::DumpStmt(s) => HirStmtKind::Dump(self.lower_dump_stmt(fn_id, scope_id, s)),
         };
 
-        HirStmt {
+        let stmt = HirStmt {
             span: stmt.span,
             kind: lowered,
-        }
+        };
+        self.register_stmt(stmt)
     }
 
     fn lower_fndef_stmt(
@@ -246,11 +311,10 @@ impl LoweringContext {
             ast: AstParamList::Nonempty { ident, ty, next },
         } = curr_param
         {
+            let name = self.lower_ident(fn_id, scope_id, ident);
             params.push(HirParam {
                 span: *span,
-                res: Some(RefCell::new(ResolveStatus::Unresolved(
-                    self.lower_ident(fn_id, scope_id, ident),
-                ))),
+                res_id: Some(self.register_res_var_id(ResolveStatus::Unresolved(name))),
                 ty: self.lower_ty(fn_id, scope_id, ty),
             });
             curr_param = &next;
@@ -261,14 +325,12 @@ impl LoweringContext {
         let (new_fn_id, new_scope_id) =
             self.register_fndecl(scope_id, stmt.span, ident, params, ret_ty);
 
+        let begin_stmt = self.lower_begin_stmt(new_fn_id, new_scope_id, &stmt.ast.body);
+        let begin_stmt_id = self.register_stmt(begin_stmt.into());
         let body = HirFnBody {
             id: new_fn_id,
             inner_scope_id: new_scope_id,
-            kind: HirFnBodyKind::Stmt(Box::new(self.lower_begin_stmt(
-                new_fn_id,
-                new_scope_id,
-                &stmt.ast.body,
-            ))),
+            kind: HirFnBodyKind::Stmt(begin_stmt_id),
         };
         self.register_fnbody(scope_id, new_fn_id, body);
 
@@ -283,13 +345,13 @@ impl LoweringContext {
     ) -> HirIfStmt {
         HirIfStmt {
             span: stmt.span,
-            cond: Box::new(self.lower_arith_expr(fn_id, scope_id, &stmt.ast.cond)),
-            then: Box::new(self.lower_stmt(fn_id, scope_id, &stmt.ast.then)),
-            otherwise: stmt
+            cond_id: self.lower_expr(fn_id, scope_id, &stmt.ast.cond),
+            then_id: self.lower_stmt(fn_id, scope_id, &stmt.ast.then),
+            otherwise_id: stmt
                 .ast
                 .otherwise
                 .as_ref()
-                .map(|otherwise| Box::new(self.lower_stmt(fn_id, scope_id, otherwise))),
+                .map(|otherwise| self.lower_stmt(fn_id, scope_id, otherwise)),
         }
     }
 
@@ -301,8 +363,8 @@ impl LoweringContext {
     ) -> HirWhileStmt {
         HirWhileStmt {
             span: stmt.span,
-            cond: Box::new(self.lower_arith_expr(fn_id, scope_id, &stmt.ast.cond)),
-            body: Box::new(self.lower_stmt(fn_id, scope_id, &stmt.ast.body)),
+            cond_id: self.lower_expr(fn_id, scope_id, &stmt.ast.cond),
+            body_id: self.lower_stmt(fn_id, scope_id, &stmt.ast.body),
         }
     }
 
@@ -312,16 +374,16 @@ impl LoweringContext {
         scope_id: ScopeId,
         stmt: &Ast<AstBeginStmt>,
     ) -> HirBeginStmt {
-        let mut stmts = vec![];
+        let mut stmt_ids = vec![];
         let mut curr = &stmt.ast.list.ast;
         while let AstStmtList::Nonempty { stmt, next } = curr {
-            stmts.push(self.lower_stmt(fn_id, scope_id, stmt));
+            stmt_ids.push(self.lower_stmt(fn_id, scope_id, stmt));
             curr = &next.ast;
         }
 
         HirBeginStmt {
             span: stmt.span,
-            stmts,
+            stmt_ids,
         }
     }
 
@@ -333,8 +395,8 @@ impl LoweringContext {
     ) -> HirAssgStmt {
         HirAssgStmt {
             span: stmt.span,
-            var: Box::new(self.lower_var(fn_id, scope_id, &stmt.ast.var, true)),
-            expr: Box::new(self.lower_arith_expr(fn_id, scope_id, &stmt.ast.expr)),
+            var: (self.lower_var(fn_id, scope_id, &stmt.ast.var, true)),
+            expr_id: self.lower_expr(fn_id, scope_id, &stmt.ast.expr),
         }
     }
 
@@ -346,19 +408,14 @@ impl LoweringContext {
     ) -> HirDumpStmt {
         HirDumpStmt {
             span: stmt.span,
-            var: Box::new(self.lower_var(fn_id, scope_id, &stmt.ast.var, false)),
+            var: (self.lower_var(fn_id, scope_id, &stmt.ast.var, false)),
         }
     }
 
-    fn lower_arith_expr(
-        &mut self,
-        fn_id: FnId,
-        scope_id: ScopeId,
-        expr: &Ast<AstArithExpr>,
-    ) -> HirArithExpr {
+    fn lower_expr(&mut self, fn_id: FnId, scope_id: ScopeId, expr: &Ast<AstExpr>) -> ExprId {
         match &expr.ast {
-            AstArithExpr::AddExpr(expr) => self.lower_add_expr(fn_id, scope_id, &*expr),
-            AstArithExpr::CompareExpr(op, l, r) => {
+            AstExpr::AddExpr(expr) => self.lower_add_expr(fn_id, scope_id, &*expr),
+            AstExpr::CompareExpr(op, l, r) => {
                 let op = match &op.ast {
                     AstCompareOp::Lt => BinOp::Lt,
                     AstCompareOp::Gt => BinOp::Gt,
@@ -367,30 +424,27 @@ impl LoweringContext {
                     AstCompareOp::Eq => BinOp::Eq,
                     AstCompareOp::Ne => BinOp::Ne,
                 };
-                let kind = HirArithExprKind::BinOp(
+                let kind = HirExprKind::BinOp(
                     op,
-                    Box::new(self.lower_arith_expr(fn_id, scope_id, l)),
-                    Box::new(self.lower_add_expr(fn_id, scope_id, r)),
+                    self.lower_expr(fn_id, scope_id, l),
+                    self.lower_add_expr(fn_id, scope_id, r),
                 );
-
-                HirArithExpr {
+                let res_expr_ty_kind = ResolveStatus::Resolved(TypeckStatus::Infer);
+                let expr = HirExpr {
                     span: expr.span,
                     ty: HirTy {
                         span: expr.span,
-                        res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
+                        res_id: self.register_res_ty_kind(res_expr_ty_kind),
                     },
                     kind,
-                }
+                };
+
+                self.register_expr(expr)
             }
         }
     }
 
-    fn lower_add_expr(
-        &mut self,
-        fn_id: FnId,
-        scope_id: ScopeId,
-        expr: &Ast<AstAddExpr>,
-    ) -> HirArithExpr {
+    fn lower_add_expr(&mut self, fn_id: FnId, scope_id: ScopeId, expr: &Ast<AstAddExpr>) -> ExprId {
         match &expr.ast {
             AstAddExpr::MulExpr(e) => self.lower_mul_expr(fn_id, scope_id, e),
             AstAddExpr::Add(l, r) | AstAddExpr::Sub(l, r) => {
@@ -399,30 +453,27 @@ impl LoweringContext {
                     AstAddExpr::Add(_, _) => BinOp::Add,
                     AstAddExpr::Sub(_, _) => BinOp::Sub,
                 };
-                let kind = HirArithExprKind::BinOp(
+                let kind = HirExprKind::BinOp(
                     op,
-                    Box::new(self.lower_add_expr(fn_id, scope_id, l)),
-                    Box::new(self.lower_mul_expr(fn_id, scope_id, r)),
+                    self.lower_add_expr(fn_id, scope_id, l),
+                    self.lower_mul_expr(fn_id, scope_id, r),
                 );
-
-                HirArithExpr {
+                let res_expr_ty_kind = ResolveStatus::Resolved(TypeckStatus::Infer);
+                let expr = HirExpr {
                     span: expr.span,
                     kind,
                     ty: HirTy {
                         span: expr.span,
-                        res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
+                        res_id: self.register_res_ty_kind(res_expr_ty_kind),
                     },
-                }
+                };
+
+                self.register_expr(expr)
             }
         }
     }
 
-    fn lower_mul_expr(
-        &mut self,
-        fn_id: FnId,
-        scope_id: ScopeId,
-        expr: &Ast<AstMulExpr>,
-    ) -> HirArithExpr {
+    fn lower_mul_expr(&mut self, fn_id: FnId, scope_id: ScopeId, expr: &Ast<AstMulExpr>) -> ExprId {
         match &expr.ast {
             AstMulExpr::UnaryExpr(e) => self.lower_unary_expr(fn_id, scope_id, e),
             AstMulExpr::Mul(l, r) | AstMulExpr::Div(l, r) => {
@@ -431,20 +482,22 @@ impl LoweringContext {
                     AstMulExpr::Mul(_, _) => BinOp::Mul,
                     AstMulExpr::Div(_, _) => BinOp::Div,
                 };
-                let kind = HirArithExprKind::BinOp(
+                let kind = HirExprKind::BinOp(
                     op,
-                    Box::new(self.lower_mul_expr(fn_id, scope_id, l)),
-                    Box::new(self.lower_unary_expr(fn_id, scope_id, r)),
+                    self.lower_mul_expr(fn_id, scope_id, l),
+                    self.lower_unary_expr(fn_id, scope_id, r),
                 );
-
-                HirArithExpr {
+                let res_expr_ty_kind = ResolveStatus::Resolved(TypeckStatus::Infer);
+                let expr = HirExpr {
                     span: expr.span,
                     kind,
                     ty: HirTy {
                         span: expr.span,
-                        res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
+                        res_id: self.register_res_ty_kind(res_expr_ty_kind),
                     },
-                }
+                };
+
+                self.register_expr(expr)
             }
         }
     }
@@ -454,29 +507,25 @@ impl LoweringContext {
         fn_id: FnId,
         scope_id: ScopeId,
         expr: &Ast<AstUnaryExpr>,
-    ) -> HirArithExpr {
+    ) -> ExprId {
         match &expr.ast {
-            AstUnaryExpr::PrimaryExpr(e) => HirArithExpr {
-                span: expr.span,
-                ty: HirTy {
+            AstUnaryExpr::PrimaryExpr(e) => self.lower_primary_expr(fn_id, scope_id, &e),
+            AstUnaryExpr::Neg(e) => {
+                let res_expr_ty_kind = ResolveStatus::Resolved(TypeckStatus::Infer);
+                let expr = HirExpr {
                     span: expr.span,
-                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
-                },
-                kind: HirArithExprKind::Primary(Box::new(
-                    self.lower_primary_expr(fn_id, scope_id, &e),
-                )),
-            },
-            AstUnaryExpr::Neg(e) => HirArithExpr {
-                span: expr.span,
-                ty: HirTy {
-                    span: expr.span,
-                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
-                },
-                kind: HirArithExprKind::UnaryOp(
-                    UnaryOp::Neg,
-                    Box::new(self.lower_unary_expr(fn_id, scope_id, &e)),
-                ),
-            },
+                    ty: HirTy {
+                        span: expr.span,
+                        res_id: self.register_res_ty_kind(res_expr_ty_kind),
+                    },
+                    kind: HirExprKind::UnaryOp(
+                        UnaryOp::Neg,
+                        self.lower_unary_expr(fn_id, scope_id, &e),
+                    ),
+                };
+
+                self.register_expr(expr)
+            }
         }
     }
 
@@ -485,28 +534,31 @@ impl LoweringContext {
         fn_id: FnId,
         scope_id: ScopeId,
         expr: &Ast<AstPrimaryExpr>,
-    ) -> HirPrimaryExpr {
-        HirPrimaryExpr {
+    ) -> ExprId {
+        let res_expr_ty_kind = ResolveStatus::Resolved(TypeckStatus::Infer);
+        let expr = HirExpr {
             span: expr.span,
             ty: HirTy {
                 span: expr.span,
-                res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
+                res_id: self.register_res_ty_kind(res_expr_ty_kind),
             },
             kind: match &expr.ast {
                 AstPrimaryExpr::Var(var) => {
-                    HirPrimaryExprKind::Var(Box::new(self.lower_var(fn_id, scope_id, var, false)))
+                    HirExprKind::Var(self.lower_var(fn_id, scope_id, var, false))
                 }
                 AstPrimaryExpr::Const(cst) => {
-                    HirPrimaryExprKind::Const(Box::new(self.lower_const(fn_id, scope_id, cst)))
+                    HirExprKind::Const(self.lower_const(fn_id, scope_id, cst))
                 }
                 AstPrimaryExpr::FnCall(call) => {
-                    HirPrimaryExprKind::FnCall(Box::new(self.lower_fncall(fn_id, scope_id, call)))
+                    HirExprKind::FnCall(self.lower_fncall(fn_id, scope_id, call))
                 }
-                AstPrimaryExpr::Paren(expr) => HirPrimaryExprKind::Paren(Box::new(
-                    self.lower_arith_expr(fn_id, scope_id, expr),
-                )),
+                AstPrimaryExpr::Paren(expr) => {
+                    HirExprKind::Paren(self.lower_expr(fn_id, scope_id, expr))
+                }
             },
-        }
+        };
+
+        self.register_expr(expr)
     }
 
     fn lower_fncall(&mut self, fn_id: FnId, scope_id: ScopeId, call: &Ast<AstFnCall>) -> HirFnCall {
@@ -517,18 +569,15 @@ impl LoweringContext {
             ..
         } = curr_arg
         {
-            args.push(self.lower_arith_expr(fn_id, scope_id, expr));
+            args.push(self.lower_expr(fn_id, scope_id, expr));
             curr_arg = &next;
         }
 
+        let name = self.lower_ident(fn_id, scope_id, &call.ast.ident);
         HirFnCall {
             span: call.span,
             span_name: call.ast.ident.span,
-            res: RefCell::new(ResolveStatus::Unresolved(self.lower_ident(
-                fn_id,
-                scope_id,
-                &call.ast.ident,
-            ))),
+            res_id: self.register_res_fn_id(ResolveStatus::Unresolved(name)),
             args,
         }
     }
@@ -538,25 +587,27 @@ impl LoweringContext {
             AstConst::Int(v) => (
                 HirTy {
                     span: cst.span,
-                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(TyKind::Int))),
+                    res_id: self.register_res_ty_kind(ResolveStatus::Resolved(
+                        TypeckStatus::Revealed(TyKind::Int),
+                    )),
                 },
                 Value::Int(*v),
             ),
             AstConst::Float(v) => (
                 HirTy {
                     span: cst.span,
-                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(
-                        TyKind::Float,
-                    ))),
+                    res_id: self.register_res_ty_kind(ResolveStatus::Resolved(
+                        TypeckStatus::Revealed(TyKind::Float),
+                    )),
                 },
                 Value::Float(*v),
             ),
             AstConst::Bool(v) => (
                 HirTy {
                     span: cst.span,
-                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Revealed(
-                        TyKind::Bool,
-                    ))),
+                    res_id: self.register_res_ty_kind(ResolveStatus::Resolved(
+                        TypeckStatus::Revealed(TyKind::Bool),
+                    )),
                 },
                 Value::Bool(*v),
             ),
@@ -578,34 +629,27 @@ impl LoweringContext {
         if try_register {
             // try registering new variable
             let name = self.lower_ident(fn_id, scope_id, var.ast.ident());
-            self.try_register_var(
-                scope_id,
-                name,
-                HirTy {
-                    span: var.span,
-                    res: RefCell::new(ResolveStatus::Resolved(TypeckStatus::Infer)),
-                },
-            );
+            let res_ty_kind = ResolveStatus::Resolved(TypeckStatus::Infer);
+            let ty = HirTy {
+                span: var.span,
+                res_id: self.register_res_ty_kind(res_ty_kind),
+            };
+            self.try_register_var(scope_id, name, ty);
         }
 
+        let name = self.lower_ident(fn_id, scope_id, var.ast.ident());
         HirVarRef {
             span: var.span,
-            res: RefCell::new(ResolveStatus::Unresolved(self.lower_ident(
-                fn_id,
-                scope_id,
-                var.ast.ident(),
-            ))),
+            res_id: self.register_res_var_id(ResolveStatus::Unresolved(name)),
         }
     }
 
     fn lower_ty(&mut self, fn_id: FnId, scope_id: ScopeId, ty: &Ast<AstTy>) -> HirTy {
+        let name = self.lower_ident(fn_id, scope_id, ty.ast.ident());
+        let res_ty_kind = ResolveStatus::Unresolved(name);
         HirTy {
             span: ty.span,
-            res: RefCell::new(ResolveStatus::Unresolved(self.lower_ident(
-                fn_id,
-                scope_id,
-                ty.ast.ident(),
-            ))),
+            res_id: self.register_res_ty_kind(res_ty_kind),
         }
     }
 

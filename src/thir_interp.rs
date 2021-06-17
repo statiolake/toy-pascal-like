@@ -4,11 +4,11 @@ use itertools::izip;
 use itertools::Itertools as _;
 use std::collections::BTreeMap;
 
-pub fn run(program: &ThirProgram) -> BTreeMap<String, Value> {
-    let mut state = State::prepare_start(program);
+pub fn run(thir_ctx: &ThirContext) -> BTreeMap<String, Value> {
+    let mut state = State::prepare_start(thir_ctx);
     state.run();
 
-    let scope = program.scope(state.scope_id);
+    let scope = thir_ctx.scope(state.scope_id);
     state
         .vars
         .iter()
@@ -20,29 +20,29 @@ pub fn run(program: &ThirProgram) -> BTreeMap<String, Value> {
 }
 
 pub struct State<'thir> {
-    prog: &'thir ThirProgram,
+    ctx: &'thir ThirContext,
     fn_id: FnId,
     scope_id: ScopeId,
     vars: BTreeMap<VarId, Option<Value>>,
 }
 
 impl<'thir> State<'thir> {
-    pub fn new_for(prog: &'thir ThirProgram, fn_id: FnId) -> Self {
+    pub fn new_for(ctx: &'thir ThirContext, fn_id: FnId) -> Self {
         // prepare variable tables
-        let scope_id = prog.fnbody(fn_id).inner_scope_id;
-        let scope = prog.scope(scope_id);
+        let scope_id = ctx.fnbody(fn_id).inner_scope_id;
+        let scope = ctx.scope(scope_id);
         let vars = scope.vars.keys().map(|&var_id| (var_id, None)).collect();
 
         Self {
-            prog,
+            ctx,
             fn_id,
             scope_id,
             vars,
         }
     }
 
-    pub fn prepare_start(program: &'thir ThirProgram) -> Self {
-        Self::new_for(program, program.start_fn_id)
+    pub fn prepare_start(thir_ctx: &'thir ThirContext) -> Self {
+        Self::new_for(thir_ctx, thir_ctx.start_fn_id)
     }
 }
 
@@ -87,24 +87,28 @@ impl State<'_> {
     }
 
     fn run_fn(&mut self, args: Vec<Value>) -> Value {
-        let decl = self.prog.fndecl(self.fn_id);
-        let body = self.prog.fnbody(self.fn_id);
+        let decl = self.ctx.fndecl(self.fn_id);
+        let body = self.ctx.fnbody(self.fn_id);
         match &body.kind {
-            ThirFnBodyKind::Stmt(stmt) => {
+            &ThirFnBodyKind::Stmt(stmt_id) => {
                 // Set args to the local variable
                 for (param, arg) in izip!(&decl.params, args) {
-                    if let Some(res) = param.res {
-                        *self.vars.get_mut(&res).unwrap() = Some(arg);
+                    if let Some(res_id) = param.res_id {
+                        let var_id = self.ctx.res_var_id(res_id);
+                        *self.vars.get_mut(&var_id).unwrap() = Some(arg);
                     }
                 }
 
+                let ret_var_id = self.ctx.res_var_id(decl.ret_var);
+
                 // If the return type is void: the return value can be implicit
-                if decl.ret_ty.res == TyKind::Void {
-                    *self.vars.get_mut(&decl.ret_var).unwrap() = Some(Value::Void);
+                if self.ctx.res_ty_kind(decl.ret_ty.res_id) == &TyKind::Void {
+                    *self.vars.get_mut(&ret_var_id).unwrap() = Some(Value::Void);
                 }
 
-                self.run_begin_stmt(&*stmt);
-                self.vars[&decl.ret_var].as_ref().unwrap().clone()
+                let stmt = self.ctx.stmt(stmt_id);
+                self.run_stmt(stmt);
+                self.vars[&ret_var_id].as_ref().unwrap().clone()
             }
             ThirFnBodyKind::Builtin(dynfn) => dynfn(args),
         }
@@ -122,88 +126,102 @@ impl State<'_> {
     }
 
     fn run_if_stmt(&mut self, stmt: &ThirIfStmt) {
-        if self.eval_arith_expr(&*stmt.cond).unwrap_bool() {
-            self.run_stmt(&*stmt.then);
-        } else if let Some(otherwise) = &stmt.otherwise {
-            self.run_stmt(&**otherwise);
+        let cond = self.ctx.expr(stmt.cond_id);
+        if self.eval_expr(cond).unwrap_bool() {
+            let then = self.ctx.stmt(stmt.then_id);
+            self.run_stmt(then);
+        } else if let Some(otherwise_id) = stmt.otherwise_id {
+            let otherwise = self.ctx.stmt(otherwise_id);
+            self.run_stmt(otherwise);
         }
     }
 
     fn run_while_stmt(&mut self, stmt: &ThirWhileStmt) {
-        while self.eval_arith_expr(&*stmt.cond).unwrap_bool() {
-            self.run_stmt(&*stmt.body);
+        let cond = self.ctx.expr(stmt.cond_id);
+        let body = self.ctx.stmt(stmt.body_id);
+        while self.eval_expr(cond).unwrap_bool() {
+            self.run_stmt(body);
         }
     }
 
     fn run_begin_stmt(&mut self, stmt: &ThirBeginStmt) {
-        for stmt in &stmt.stmts {
+        for &stmt_id in &stmt.stmt_ids {
+            let stmt = self.ctx.stmt(stmt_id);
             self.run_stmt(stmt);
         }
     }
 
     fn run_assg_stmt(&mut self, stmt: &ThirAssgStmt) {
-        *self.vars.get_mut(&stmt.var.res).unwrap() = Some(self.eval_arith_expr(&*stmt.expr));
+        let expr = self.ctx.expr(stmt.expr_id);
+        let var_id = self.ctx.res_var_id(stmt.var.res_id);
+        *self.vars.get_mut(&var_id).unwrap() = Some(self.eval_expr(expr));
     }
 
     fn run_dump_stmt(&mut self, stmt: &ThirDumpStmt) {
-        let scope = &self.prog.scope(self.scope_id);
-        let var = &scope.vars[&stmt.var.res];
-        let value = &self.vars[&stmt.var.res];
+        let scope = &self.ctx.scope(self.scope_id);
+        let var_id = self.ctx.res_var_id(stmt.var.res_id);
+        let var = &scope.vars[&var_id];
+        let value = &self.vars[&var_id];
         println!("{} = {}", var.name.ident, value.as_ref().unwrap());
     }
 
-    fn eval_arith_expr(&self, stmt: &ThirArithExpr) -> Value {
+    fn eval_expr(&self, stmt: &ThirExpr) -> Value {
         match &stmt.kind {
-            ThirArithExprKind::Primary(e) => self.eval_primary_expr(e),
-            ThirArithExprKind::UnaryOp(op, e) => match op {
-                UnaryOp::Neg => apply_op!(unary -, self.eval_arith_expr(e)),
-            },
-            ThirArithExprKind::BinOp(op, l, r) => match op {
-                BinOp::Add => {
-                    apply_op!(arith+, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Sub => {
-                    apply_op!(arith -, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Mul => {
-                    apply_op!(arith *, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Div => {
-                    apply_op!(arith /, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Lt => {
-                    apply_op!(compare <, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Gt => {
-                    apply_op!(compare >, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Le => {
-                    apply_op!(compare <=, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Ge => {
-                    apply_op!(compare >=, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Eq => {
-                    apply_op!(equal ==, self.eval_arith_expr(l), self.eval_arith_expr(r))
-                }
-                BinOp::Ne => {
-                    apply_op!(equal !=, self.eval_arith_expr(l), self.eval_arith_expr(r))
+            ThirExprKind::UnaryOp(op, expr_id) => match op {
+                UnaryOp::Neg => {
+                    let expr = self.ctx.expr(*expr_id);
+                    apply_op!(unary -, self.eval_expr(expr))
                 }
             },
-        }
-    }
-
-    fn eval_primary_expr(&self, stmt: &ThirPrimaryExpr) -> Value {
-        match &stmt.kind {
-            ThirPrimaryExprKind::Var(var) => self.eval_var(&*var),
-            ThirPrimaryExprKind::Const(cst) => self.eval_cst(&*cst),
-            ThirPrimaryExprKind::FnCall(fncall) => self.eval_fncall(&*fncall),
-            ThirPrimaryExprKind::Paren(expr) => self.eval_arith_expr(&*expr),
+            ThirExprKind::BinOp(op, lhs_id, rhs_id) => {
+                let lhs = self.ctx.expr(*lhs_id);
+                let rhs = self.ctx.expr(*rhs_id);
+                match op {
+                    BinOp::Add => {
+                        apply_op!(arith+, self.eval_expr(lhs), self.eval_expr(rhs))
+                    }
+                    BinOp::Sub => {
+                        apply_op!(arith -, self.eval_expr(lhs), self.eval_expr(rhs))
+                    }
+                    BinOp::Mul => {
+                        apply_op!(arith *, self.eval_expr(lhs), self.eval_expr(rhs))
+                    }
+                    BinOp::Div => {
+                        apply_op!(arith /, self.eval_expr(lhs), self.eval_expr(rhs))
+                    }
+                    BinOp::Lt => {
+                        apply_op!(compare <, self.eval_expr(lhs), self.eval_expr(rhs))
+                    }
+                    BinOp::Gt => {
+                        apply_op!(compare >, self.eval_expr(lhs), self.eval_expr(rhs))
+                    }
+                    BinOp::Le => {
+                        apply_op!(compare <=, self.eval_expr(lhs), self.eval_expr(rhs))
+                    }
+                    BinOp::Ge => {
+                        apply_op!(compare >=, self.eval_expr(lhs), self.eval_expr(rhs))
+                    }
+                    BinOp::Eq => {
+                        apply_op!(equal ==, self.eval_expr(lhs), self.eval_expr(rhs))
+                    }
+                    BinOp::Ne => {
+                        apply_op!(equal !=, self.eval_expr(lhs), self.eval_expr(rhs))
+                    }
+                }
+            }
+            ThirExprKind::Var(var) => self.eval_var(&*var),
+            ThirExprKind::Const(cst) => self.eval_cst(&*cst),
+            ThirExprKind::FnCall(fncall) => self.eval_fncall(&*fncall),
+            ThirExprKind::Paren(expr_id) => {
+                let expr = self.ctx.expr(*expr_id);
+                self.eval_expr(&*expr)
+            }
         }
     }
 
     fn eval_var(&self, var: &ThirVarRef) -> Value {
-        self.vars[&var.res].as_ref().unwrap().clone()
+        let var_id = self.ctx.res_var_id(var.res_id);
+        self.vars[&var_id].as_ref().unwrap().clone()
     }
 
     fn eval_cst(&self, cst: &ThirConst) -> Value {
@@ -211,11 +229,15 @@ impl State<'_> {
     }
 
     fn eval_fncall(&self, fncall: &ThirFnCall) -> Value {
-        let mut state = State::new_for(self.prog, fncall.res);
+        let fn_id = self.ctx.res_fn_id(fncall.res_id);
+        let mut state = State::new_for(self.ctx, fn_id);
         let args = fncall
-            .args
+            .arg_ids
             .iter()
-            .map(|arg| self.eval_arith_expr(arg))
+            .map(|&arg_id| {
+                let arg = self.ctx.expr(arg_id);
+                self.eval_expr(arg)
+            })
             .collect_vec();
         state.run_fn(args)
     }

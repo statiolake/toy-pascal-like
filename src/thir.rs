@@ -4,22 +4,19 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug)]
-pub struct ThirProgram {
+pub struct ThirContext {
     pub scopes: BTreeMap<ScopeId, ThirScope>,
     pub start_fn_id: FnId,
     pub fndecls: BTreeMap<FnId, ThirFnDecl>,
     pub fnbodies: BTreeMap<FnId, ThirFnBody>,
+    pub stmts: BTreeMap<StmtId, ThirStmt>,
+    pub exprs: BTreeMap<ExprId, ThirExpr>,
+    pub res_ty_kinds: BTreeMap<ResTyKindId, TyKind>,
+    pub res_fn_ids: BTreeMap<ResFnIdId, FnId>,
+    pub res_var_ids: BTreeMap<ResVarIdId, VarId>,
 }
 
-#[derive(Debug)]
-pub struct ThirScope {
-    pub id: ScopeId,
-    pub parent_id: Option<ScopeId>,
-    pub fn_ids: Vec<FnId>,
-    pub vars: BTreeMap<VarId, ThirVar>,
-}
-
-impl ThirProgram {
+impl ThirContext {
     pub fn scope(&self, id: ScopeId) -> &ThirScope {
         self.scopes
             .get(&id)
@@ -36,6 +33,18 @@ impl ThirProgram {
         self.fnbodies
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
+    }
+
+    pub fn stmt(&self, id: StmtId) -> &ThirStmt {
+        self.stmts
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
+    }
+
+    pub fn expr(&self, id: ExprId) -> &ThirExpr {
+        self.exprs
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
     }
 
     pub fn scope_mut(&mut self, id: ScopeId) -> &mut ThirScope {
@@ -55,6 +64,67 @@ impl ThirProgram {
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
+
+    pub fn stmt_mut(&mut self, id: StmtId) -> &mut ThirStmt {
+        self.stmts
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
+    }
+
+    pub fn expr_mut(&mut self, id: ExprId) -> &mut ThirExpr {
+        self.exprs
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
+    }
+
+    pub fn res_ty_kind(&self, id: ResTyKindId) -> &TyKind {
+        self.res_ty_kinds.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: type resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
+
+    pub fn res_fn_id(&self, id: ResFnIdId) -> FnId {
+        *self.res_fn_ids.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: FnId resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
+
+    pub fn res_var_id(&self, id: ResVarIdId) -> VarId {
+        *self.res_var_ids.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: VarId resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct ThirScope {
+    pub id: ScopeId,
+    pub parent_id: Option<ScopeId>,
+    pub fn_ids: Vec<FnId>,
+    pub vars: BTreeMap<VarId, ThirVar>,
+}
+
+impl ThirScope {
+    pub fn var(&self, id: VarId) -> &ThirVar {
+        self.vars
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: variable of id {:?} not registered", id))
+    }
+
+    pub fn var_mut(&mut self, id: VarId) -> &mut ThirVar {
+        self.vars
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: variable of id {:?} not registered", id))
+    }
 }
 
 #[derive(Debug)]
@@ -68,21 +138,21 @@ pub struct ThirFnDecl {
     pub span: Span,
     pub name: Ident,
     pub params: Vec<ThirParam>,
-    pub ret_var: VarId,
+    pub ret_var: ResVarIdId,
     pub ret_ty: ThirTy,
 }
 
 #[derive(Debug, Clone)]
 pub struct ThirParam {
     pub span: Span,
-    pub res: Option<VarId>,
+    pub res_id: Option<ResVarIdId>,
     pub ty: ThirTy,
 }
 
 #[derive(Debug, Clone)]
 pub struct ThirTy {
     pub span: Span,
-    pub res: TyKind,
+    pub res_id: ResTyKindId,
 }
 
 #[derive(Debug)]
@@ -93,7 +163,7 @@ pub struct ThirFnBody {
 }
 
 pub enum ThirFnBodyKind {
-    Stmt(Box<ThirBeginStmt>),
+    Stmt(StmtId),
     Builtin(Box<dyn Fn(Vec<Value>) -> Value>),
 }
 
@@ -134,70 +204,58 @@ pub enum ThirStmtKind {
 #[derive(Debug)]
 pub struct ThirIfStmt {
     pub span: Span,
-    pub cond: Box<ThirArithExpr>,
-    pub then: Box<ThirStmt>,
-    pub otherwise: Option<Box<ThirStmt>>,
+    pub cond_id: ExprId,
+    pub then_id: StmtId,
+    pub otherwise_id: Option<StmtId>,
 }
 
 #[derive(Debug)]
 pub struct ThirWhileStmt {
     pub span: Span,
-    pub cond: Box<ThirArithExpr>,
-    pub body: Box<ThirStmt>,
+    pub cond_id: ExprId,
+    pub body_id: StmtId,
 }
 
 #[derive(Debug)]
 pub struct ThirBeginStmt {
     pub span: Span,
-    pub stmts: Vec<ThirStmt>,
+    pub stmt_ids: Vec<StmtId>,
 }
 
 #[derive(Debug)]
 pub struct ThirAssgStmt {
     pub span: Span,
-    pub var: Box<ThirVarRef>,
-    pub expr: Box<ThirArithExpr>,
+    pub var: ThirVarRef,
+    pub expr_id: ExprId,
 }
 
 #[derive(Debug)]
 pub struct ThirDumpStmt {
     pub span: Span,
-    pub var: Box<ThirVarRef>,
+    pub var: ThirVarRef,
 }
 
 #[derive(Debug)]
-pub struct ThirArithExpr {
+pub struct ThirExpr {
     pub span: Span,
     pub ty: ThirTy,
-    pub kind: ThirArithExprKind,
+    pub kind: ThirExprKind,
 }
 
 #[derive(Debug)]
-pub enum ThirArithExprKind {
-    Primary(Box<ThirPrimaryExpr>),
-    UnaryOp(UnaryOp, Box<ThirArithExpr>),
-    BinOp(BinOp, Box<ThirArithExpr>, Box<ThirArithExpr>),
-}
-
-#[derive(Debug)]
-pub struct ThirPrimaryExpr {
-    pub span: Span,
-    pub ty: ThirTy,
-    pub kind: ThirPrimaryExprKind,
-}
-
-#[derive(Debug)]
-pub enum ThirPrimaryExprKind {
-    Var(Box<ThirVarRef>),
-    Const(Box<ThirConst>),
-    FnCall(Box<ThirFnCall>),
-    Paren(Box<ThirArithExpr>),
+pub enum ThirExprKind {
+    UnaryOp(UnaryOp, ExprId),
+    BinOp(BinOp, ExprId, ExprId),
+    Var(ThirVarRef),
+    Const(ThirConst),
+    FnCall(ThirFnCall),
+    Paren(ExprId),
 }
 
 #[derive(Debug)]
 pub struct ThirVarRef {
     pub span: Span,
-    pub res: VarId,
+    pub res_id: ResVarIdId,
 }
 
 #[derive(Debug)]
@@ -211,6 +269,6 @@ pub struct ThirConst {
 pub struct ThirFnCall {
     pub span: Span,
     pub span_name: Span,
-    pub res: FnId,
-    pub args: Vec<ThirArithExpr>,
+    pub res_id: ResFnIdId,
+    pub arg_ids: Vec<ExprId>,
 }

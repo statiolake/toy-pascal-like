@@ -5,14 +5,19 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug)]
-pub struct RhirProgram {
+pub struct RhirContext {
     pub scopes: BTreeMap<ScopeId, RhirScope>,
     pub start_fn_id: FnId,
     pub fndecls: BTreeMap<FnId, RhirFnDecl>,
     pub fnbodies: BTreeMap<FnId, RhirFnBody>,
+    pub stmts: BTreeMap<StmtId, RhirStmt>,
+    pub exprs: BTreeMap<ExprId, RhirExpr>,
+    pub res_ty_kinds: BTreeMap<ResTyKindId, RefCell<TypeckStatus>>,
+    pub res_fn_ids: BTreeMap<ResFnIdId, FnId>,
+    pub res_var_ids: BTreeMap<ResVarIdId, VarId>,
 }
 
-impl RhirProgram {
+impl RhirContext {
     pub fn scope(&self, id: ScopeId) -> &RhirScope {
         self.scopes
             .get(&id)
@@ -29,6 +34,18 @@ impl RhirProgram {
         self.fnbodies
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
+    }
+
+    pub fn stmt(&self, id: StmtId) -> &RhirStmt {
+        self.stmts
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
+    }
+
+    pub fn expr(&self, id: ExprId) -> &RhirExpr {
+        self.exprs
+            .get(&id)
+            .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
     }
 
     pub fn scope_mut(&mut self, id: ScopeId) -> &mut RhirScope {
@@ -48,6 +65,45 @@ impl RhirProgram {
             .get_mut(&id)
             .unwrap_or_else(|| panic!("internal error: function of id {:?} not registered", id))
     }
+
+    pub fn stmt_mut(&mut self, id: StmtId) -> &mut RhirStmt {
+        self.stmts
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: statement of id {:?} not registered", id))
+    }
+
+    pub fn expr_mut(&mut self, id: ExprId) -> &mut RhirExpr {
+        self.exprs
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: expression of id {:?} not registered", id))
+    }
+
+    pub fn res_ty_kind(&self, id: ResTyKindId) -> &RefCell<TypeckStatus> {
+        self.res_ty_kinds.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: type resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
+
+    pub fn res_fn_id(&self, id: ResFnIdId) -> FnId {
+        *self.res_fn_ids.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: FnId resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
+
+    pub fn res_var_id(&self, id: ResVarIdId) -> VarId {
+        *self.res_var_ids.get(&id).unwrap_or_else(|| {
+            panic!(
+                "internal error: VarId resolution of id {:?} not registered",
+                id
+            )
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -64,6 +120,12 @@ impl RhirScope {
             .get(&id)
             .unwrap_or_else(|| panic!("internal error: variable of id {:?} not registered", id))
     }
+
+    pub fn var_mut(&mut self, id: VarId) -> &mut RhirVar {
+        self.vars
+            .get_mut(&id)
+            .unwrap_or_else(|| panic!("internal error: variable of id {:?} not registered", id))
+    }
 }
 
 #[derive(Debug)]
@@ -77,7 +139,7 @@ pub struct RhirFnDecl {
     pub span: Span,
     pub name: Ident,
     pub params: Vec<RhirParam>,
-    pub ret_var: VarId,
+    pub ret_var: ResVarIdId,
     pub ret_ty: RhirTy,
 }
 
@@ -86,14 +148,14 @@ pub struct RhirParam {
     pub span: Span,
     // None if this parameter is of buitlin functions: they are just Rust native closures so they
     // don't have corresponding local variables for parameters.
-    pub res: Option<VarId>,
+    pub res_id: Option<ResVarIdId>,
     pub ty: RhirTy,
 }
 
 #[derive(Debug, Clone)]
 pub struct RhirTy {
     pub span: Span,
-    pub res: RefCell<TypeckStatus>,
+    pub res_id: ResTyKindId,
 }
 
 #[derive(Debug)]
@@ -104,7 +166,7 @@ pub struct RhirFnBody {
 }
 
 pub enum RhirFnBodyKind {
-    Stmt(Box<RhirBeginStmt>),
+    Stmt(StmtId),
     Builtin(Box<dyn Fn(Vec<Value>) -> Value>),
 }
 
@@ -145,70 +207,58 @@ pub enum RhirStmtKind {
 #[derive(Debug)]
 pub struct RhirIfStmt {
     pub span: Span,
-    pub cond: Box<RhirArithExpr>,
-    pub then: Box<RhirStmt>,
-    pub otherwise: Option<Box<RhirStmt>>,
+    pub cond_id: ExprId,
+    pub then_id: StmtId,
+    pub otherwise_id: Option<StmtId>,
 }
 
 #[derive(Debug)]
 pub struct RhirWhileStmt {
     pub span: Span,
-    pub cond: Box<RhirArithExpr>,
-    pub body: Box<RhirStmt>,
+    pub cond_id: ExprId,
+    pub body_id: StmtId,
 }
 
 #[derive(Debug)]
 pub struct RhirBeginStmt {
     pub span: Span,
-    pub stmts: Vec<RhirStmt>,
+    pub stmt_ids: Vec<StmtId>,
 }
 
 #[derive(Debug)]
 pub struct RhirAssgStmt {
     pub span: Span,
-    pub var: Box<RhirVarRef>,
-    pub expr: Box<RhirArithExpr>,
+    pub var: RhirVarRef,
+    pub expr_id: ExprId,
 }
 
 #[derive(Debug)]
 pub struct RhirDumpStmt {
     pub span: Span,
-    pub var: Box<RhirVarRef>,
+    pub var: RhirVarRef,
 }
 
 #[derive(Debug)]
-pub struct RhirArithExpr {
+pub struct RhirExpr {
     pub span: Span,
     pub ty: RhirTy,
-    pub kind: RhirArithExprKind,
+    pub kind: RhirExprKind,
 }
 
 #[derive(Debug)]
-pub enum RhirArithExprKind {
-    Primary(Box<RhirPrimaryExpr>),
-    UnaryOp(UnaryOp, Box<RhirArithExpr>),
-    BinOp(BinOp, Box<RhirArithExpr>, Box<RhirArithExpr>),
-}
-
-#[derive(Debug)]
-pub struct RhirPrimaryExpr {
-    pub span: Span,
-    pub ty: RhirTy,
-    pub kind: RhirPrimaryExprKind,
-}
-
-#[derive(Debug)]
-pub enum RhirPrimaryExprKind {
-    Var(Box<RhirVarRef>),
-    Const(Box<RhirConst>),
-    FnCall(Box<RhirFnCall>),
-    Paren(Box<RhirArithExpr>),
+pub enum RhirExprKind {
+    UnaryOp(UnaryOp, ExprId),
+    BinOp(BinOp, ExprId, ExprId),
+    Var(RhirVarRef),
+    Const(RhirConst),
+    FnCall(RhirFnCall),
+    Paren(ExprId),
 }
 
 #[derive(Debug)]
 pub struct RhirVarRef {
     pub span: Span,
-    pub res: VarId,
+    pub res_id: ResVarIdId,
 }
 
 #[derive(Debug)]
@@ -222,6 +272,6 @@ pub struct RhirConst {
 pub struct RhirFnCall {
     pub span: Span,
     pub span_name: Span,
-    pub res: FnId,
-    pub args: Vec<RhirArithExpr>,
+    pub res_id: ResFnIdId,
+    pub arg_ids: Vec<ExprId>,
 }

@@ -97,7 +97,7 @@ impl AstFuncdefStmt {
 
 #[derive(Debug)]
 pub struct AstIfStmt {
-    pub cond: Box<Ast<AstArithExpr>>,
+    pub cond: Box<Ast<AstExpr>>,
     pub then: Box<Ast<AstStmt>>,
     pub otherwise: Option<Box<Ast<AstStmt>>>,
 }
@@ -105,7 +105,7 @@ pub struct AstIfStmt {
 impl AstIfStmt {
     pub fn from_elements(
         span: Span,
-        cond: Ast<AstArithExpr>,
+        cond: Ast<AstExpr>,
         then: Ast<AstStmt>,
         otherwise: Option<Ast<AstStmt>>,
     ) -> Ast<AstIfStmt> {
@@ -120,16 +120,12 @@ impl AstIfStmt {
 
 #[derive(Debug)]
 pub struct AstWhileStmt {
-    pub cond: Box<Ast<AstArithExpr>>,
+    pub cond: Box<Ast<AstExpr>>,
     pub body: Box<Ast<AstStmt>>,
 }
 
 impl AstWhileStmt {
-    pub fn from_elements(
-        span: Span,
-        cond: Ast<AstArithExpr>,
-        body: Ast<AstStmt>,
-    ) -> Ast<AstWhileStmt> {
+    pub fn from_elements(span: Span, cond: Ast<AstExpr>, body: Ast<AstStmt>) -> Ast<AstWhileStmt> {
         let ast = AstWhileStmt {
             cond: Box::new(cond),
             body: Box::new(body),
@@ -196,15 +192,11 @@ impl AstStmtList {
 #[derive(Debug)]
 pub struct AstAssgStmt {
     pub var: Box<Ast<AstVar>>,
-    pub expr: Box<Ast<AstArithExpr>>,
+    pub expr: Box<Ast<AstExpr>>,
 }
 
 impl AstAssgStmt {
-    pub fn from_elements(
-        span: Span,
-        var: Ast<AstVar>,
-        expr: Ast<AstArithExpr>,
-    ) -> Ast<AstAssgStmt> {
+    pub fn from_elements(span: Span, var: Ast<AstVar>, expr: Ast<AstExpr>) -> Ast<AstAssgStmt> {
         let ast = AstAssgStmt {
             var: Box::new(var),
             expr: Box::new(expr),
@@ -238,27 +230,23 @@ pub enum AstCompareOp {
 }
 
 #[derive(Debug)]
-pub enum AstArithExpr {
+pub enum AstExpr {
     AddExpr(Box<Ast<AstAddExpr>>),
-    CompareExpr(
-        Ast<AstCompareOp>,
-        Box<Ast<AstArithExpr>>,
-        Box<Ast<AstAddExpr>>,
-    ),
+    CompareExpr(Ast<AstCompareOp>, Box<Ast<AstExpr>>, Box<Ast<AstAddExpr>>),
 }
 
-derive_from_for_tuple_like!(AstAddExpr => AstArithExpr::AddExpr, from_add);
+derive_from_for_tuple_like!(AstAddExpr => AstExpr::AddExpr, from_add);
 
-impl AstArithExpr {
+impl AstExpr {
     pub fn compare_from_elements(
         span: Span,
         op: Ast<AstCompareOp>,
-        lhs: Ast<AstArithExpr>,
+        lhs: Ast<AstExpr>,
         rhs: Ast<AstAddExpr>,
-    ) -> Ast<AstArithExpr> {
+    ) -> Ast<AstExpr> {
         Ast {
             span,
-            ast: AstArithExpr::CompareExpr(op, Box::new(lhs), Box::new(rhs)),
+            ast: AstExpr::CompareExpr(op, Box::new(lhs), Box::new(rhs)),
         }
     }
 }
@@ -351,7 +339,7 @@ pub enum AstPrimaryExpr {
     Var(Box<Ast<AstVar>>),
     Const(Box<Ast<AstConst>>),
     FnCall(Box<Ast<AstFnCall>>),
-    Paren(Box<Ast<AstArithExpr>>),
+    Paren(Box<Ast<AstExpr>>),
 }
 
 derive_from_for_tuple_like!(AstVar => AstPrimaryExpr::Var, from_var);
@@ -359,7 +347,7 @@ derive_from_for_tuple_like!(AstConst => AstPrimaryExpr::Const, from_const);
 derive_from_for_tuple_like!(AstFnCall => AstPrimaryExpr::FnCall, from_fncall);
 
 impl AstPrimaryExpr {
-    pub fn paren_from_elements(span: Span, expr: Ast<AstArithExpr>) -> Ast<AstPrimaryExpr> {
+    pub fn paren_from_elements(span: Span, expr: Ast<AstExpr>) -> Ast<AstPrimaryExpr> {
         Ast {
             span,
             ast: AstPrimaryExpr::Paren(Box::new(expr)),
@@ -391,7 +379,7 @@ impl AstFnCall {
 pub enum AstArgumentList {
     Empty,
     Nonempty {
-        expr: Box<Ast<AstArithExpr>>,
+        expr: Box<Ast<AstExpr>>,
         next: Box<Ast<AstArgumentList>>,
     },
 }
@@ -406,7 +394,7 @@ impl AstArgumentList {
 
     pub fn from_elements(
         span: Span,
-        expr: Ast<AstArithExpr>,
+        expr: Ast<AstExpr>,
         next: Ast<AstArgumentList>,
     ) -> Ast<AstArgumentList> {
         let ast = AstArgumentList::Nonempty {

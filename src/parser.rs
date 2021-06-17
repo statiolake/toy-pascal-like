@@ -230,7 +230,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
 
     fn parse_if_stmt(&mut self) -> Result<'i, Ast<AstIfStmt>> {
         let start = self.eat(TokenKind::If)?.span.start;
-        let cond = self.parse_arith_expr()?;
+        let cond = self.parse_expr()?;
         self.eat(TokenKind::Then)?;
         let then = self.parse_stmt()?;
         let (otherwise, end) = if self.lookahead(0).map(|t| t.kind).ok() == Some(TokenKind::Else) {
@@ -252,7 +252,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
 
     fn parse_while_stmt(&mut self) -> Result<'i, Ast<AstWhileStmt>> {
         let start = self.eat(TokenKind::While)?.span.start;
-        let cond = self.parse_arith_expr()?;
+        let cond = self.parse_expr()?;
         self.eat(TokenKind::Do)?;
         let body = self.parse_stmt()?;
         let end = body.span.end;
@@ -335,7 +335,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
     fn parse_assg_stmt(&mut self) -> Result<'i, Ast<AstAssgStmt>> {
         let var = self.parse_var()?;
         self.eat(TokenKind::AssgEqual)?;
-        let expr = self.parse_arith_expr()?;
+        let expr = self.parse_expr()?;
         let start = var.span.start;
         let end = expr.span.end;
 
@@ -350,12 +350,12 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         Ok(AstDumpStmt::from_var(Span::new(start, end), var))
     }
 
-    fn parse_arith_expr(&mut self) -> Result<'i, Ast<AstArithExpr>> {
+    fn parse_expr(&mut self) -> Result<'i, Ast<AstExpr>> {
         let add = self.parse_add_expr()?;
-        self.parse_arith_expr_impl(AstArithExpr::from_add(add))
+        self.parse_expr_impl(AstExpr::from_add(add))
     }
 
-    fn parse_arith_expr_impl(&mut self, lhs: Ast<AstArithExpr>) -> Result<'i, Ast<AstArithExpr>> {
+    fn parse_expr_impl(&mut self, lhs: Ast<AstExpr>) -> Result<'i, Ast<AstExpr>> {
         match self.lookahead(0).map(|t| t.kind).ok() {
             Some(TokenKind::Lt) | Some(TokenKind::Gt) | Some(TokenKind::Le)
             | Some(TokenKind::Ge) | Some(TokenKind::Eq) | Some(TokenKind::Ne) => {
@@ -363,7 +363,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
                 let op = self.parse_compare_op()?;
                 let rhs = self.parse_add_expr()?;
                 let end = rhs.span.end;
-                self.parse_arith_expr_impl(AstArithExpr::compare_from_elements(
+                self.parse_expr_impl(AstExpr::compare_from_elements(
                     Span::new(start, end),
                     op,
                     lhs,
@@ -500,7 +500,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
         match self.lookahead(0).map(|t| (t, t.kind))? {
             (_, TokenKind::OpenPar) => {
                 let start = self.eat(TokenKind::OpenPar)?.span.start;
-                let expr = self.parse_arith_expr()?;
+                let expr = self.parse_expr()?;
                 let end = self.eat(TokenKind::ClosePar)?.span.end;
                 Ok(AstPrimaryExpr::paren_from_elements(
                     Span::new(start, end),
@@ -563,7 +563,7 @@ impl<'i, 'toks> Parser<'i, 'toks> {
     }
 
     fn parse_nonempty_argument_list(&mut self) -> Result<'i, Ast<AstArgumentList>> {
-        let expr = self.parse_arith_expr()?;
+        let expr = self.parse_expr()?;
         let next = self.lookahead(0);
         let next = if next.as_ref().map(|t| t.kind).ok() == Some(TokenKind::Comma) {
             self.eat(TokenKind::Comma)?;
